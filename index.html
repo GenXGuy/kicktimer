@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>KickTimer</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="KickTimer">
+  <meta name="theme-color" content="#0b0d10">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" type="image/png" href="icon-180.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <h1>KickTimer</h1>
+      <span id="sensorBadge" class="badge">sensor: —</span>
+    </header>
+
+    <!-- Big display: countdown numbers, WAIT, result time -->
+    <section id="display" class="display" aria-live="polite">
+      <div id="status" class="status">Tap Start</div>
+      <div id="big" class="big">0.000</div>
+      <div id="detail" class="detail">&nbsp;</div>
+    </section>
+
+    <div class="controls">
+      <button id="startBtn" class="btn primary">Start</button>
+      <button id="resetBtn" class="btn">Reset</button>
+    </div>
+
+    <div class="segmented" role="radiogroup" aria-label="Mode">
+      <button id="modeSingle" class="seg" role="radio">Single</button>
+      <button id="modeSeries" class="seg" role="radio">Series</button>
+    </div>
+
+    <button id="simBtn" class="btn sim" hidden>Simulate hit (Space)</button>
+
+    <!-- Live force meter for choosing the threshold -->
+    <section class="card">
+      <div class="row">
+        <span>Force</span>
+        <span><b id="gNow">0.00</b> g &nbsp;·&nbsp; peak <b id="gPeak">0.00</b> g</span>
+        <button id="peakReset" class="btn small">Clear peak</button>
+      </div>
+      <div class="meter">
+        <div id="meterFill" class="meter-fill"></div>
+        <div id="meterThresh" class="meter-thresh" title="threshold"></div>
+      </div>
+    </section>
+
+    <section id="summary" class="card summary" hidden></section>
+
+    <section class="card">
+      <div class="row">
+        <span>Recent results</span>
+        <button id="copyLog" class="btn small">Copy log</button>
+      </div>
+      <ol id="results" class="results"></ol>
+    </section>
+
+    <details class="card settings">
+      <summary>Settings</summary>
+      <label>Force threshold X: <b><output id="thresholdOut"></output> g</b>
+        <input id="threshold" type="range" min="0.3" max="10" step="0.1">
+      </label>
+      <label>Ready time: <b><output id="countdownOut"></output> s</b>
+        <input id="countdown" type="range" min="0" max="10" step="1">
+      </label>
+      <label>Random delay min: <b><output id="delayMinOut"></output> s</b>
+        <input id="delayMin" type="range" min="0" max="10" step="0.5">
+      </label>
+      <label>Random delay max: <b><output id="delayMaxOut"></output> s</b>
+        <input id="delayMax" type="range" min="0" max="10" step="0.5">
+      </label>
+      <label>Timeout (no kick): <b><output id="timeoutOut"></output> s</b>
+        <input id="timeout" type="range" min="1" max="10" step="0.5">
+      </label>
+      <label>Series reps: <b><output id="repsOut"></output></b>
+        <input id="reps" type="range" min="2" max="20" step="1">
+      </label>
+      <label>Rest between kicks (series): <b><output id="restOut"></output> s</b>
+        <input id="rest" type="range" min="5" max="20" step="1">
+      </label>
+      <label>Beep volume: <b><output id="volumeOut"></output>%</b>
+        <input id="volume" type="range" min="10" max="100" step="5">
+      </label>
+      <label>Latency offset: <b><output id="latencyOut"></output> ms</b>
+        <input id="latency" type="range" min="-200" max="200" step="5">
+      </label>
+      <label class="check"><input id="flash" type="checkbox"> Flash screen on beep</label>
+      <p class="hint">Use the force meter to set X: kick the bag lightly and check the peak, then set X below that but above the reading when the bag is just swaying.</p>
+    </details>
+
+    <footer class="footer">v<span id="version"></span> · works offline once installed</footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
