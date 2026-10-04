@@ -38,7 +38,13 @@ On the iPhone:
 ## Updating
 1. Change the files.
 2. Bump `CACHE` in `sw.js` and `VERSION` in `app.js`, then upload again.
-3. On Wi-Fi, open the app and close it, then open it again; it switches to the new version.
+3. On the iPhone (v1.1.1 and later), open the app on Wi-Fi. It checks for a new version each time it opens or comes back on screen.
+   - Nothing on screen: it reloads itself to the new version.
+   - Results on screen or a drill running: it shows **New version ready · tap to update** at the bottom instead, so nothing is wiped.
+   - Settings → **Check for update** checks on demand.
+4. The version number is shown at the bottom of the screen.
+
+**Stuck on an old version?** A home-screen app keeps its own copy, apart from Safari, so refreshing Safari doesn't update it. Press and hold the icon → Remove App → Delete from Home Screen, then add it again from Safari. Phones on v1.0.0 or v1.1.0 need this once to get the auto-update.
 
 ## Mounting and calibrating
 - Put the phone in a padded case and strap it firmly to the **bottom** of the bag, away from feet. Mount it the same way every time.

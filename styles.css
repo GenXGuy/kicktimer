@@ -133,3 +133,5 @@ html, body {
 .hint { color: var(--muted); font-size: 13px; line-height: 1.4; }
 
 .footer { text-align: center; color: var(--muted); font-size: 12px; }
+.btn.update { color: #000; background: var(--accent); border-color: var(--accent); font-size: 15px; padding: 10px 14px; }
+.update-check { margin-top: 16px; }

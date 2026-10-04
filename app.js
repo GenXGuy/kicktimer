@@ -3,7 +3,7 @@
 // KickTimer: countdown -> random delay -> beep -> time until the bag is hit.
 // Runs entirely on the phone; see README.md for setup.
 
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 const G = 9.80665;           // m/s^2 per g
 const SETTLE_MS = 600;       // bag must stay below threshold this long before a rep
 const CAPTURE_MS = 120;      // after the first crossing, keep reading to find the peak
@@ -554,6 +554,7 @@ document.addEventListener('visibilitychange', () => {
     if (running()) stopDrill('Stopped (app was hidden)');
   } else {
     keepAwake();
+    checkForUpdate(); // iOS often resumes the app instead of restarting it
   }
 });
 
@@ -562,6 +563,38 @@ bindSettings();
 renderResults();
 requestAnimationFrame(frame);
 
-if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+// ---------- updates ----------
+// A new sw.js installs in the background and takes over (skipWaiting + claim).
+// Reload straight away if nothing is on screen; otherwise offer a tap-to-reload
+// so a drill or a series summary is never wiped.
+
+let swReg = null;
+
+function applyUpdate() {
+  if (!running() && log.length === 0) { location.reload(); return; }
+  const footer = document.querySelector('.footer');
+  footer.innerHTML = '<button id="updateBtn" class="btn small update">New version ready · tap to update</button>';
+  $('updateBtn').addEventListener('click', () => location.reload());
 }
+
+function checkForUpdate(manual) {
+  if (!swReg) {
+    if (manual) alert('Updates are not available here.');
+    return;
+  }
+  swReg.update().then(() => {
+    if (manual && !swReg.installing && !swReg.waiting) alert(`You have the latest version (v${VERSION}).`);
+  }, () => {
+    if (manual) alert('No internet connection. Try again on Wi-Fi.');
+  });
+}
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  let hadController = !!navigator.serviceWorker.controller; // false on the very first install
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) applyUpdate();
+    hadController = true; // any later change in this session is a real update
+  });
+  navigator.serviceWorker.register('sw.js').then((reg) => { swReg = reg; reg.update().catch(() => {}); }).catch(() => {});
+}
+$('checkUpdate').addEventListener('click', () => checkForUpdate(true));
