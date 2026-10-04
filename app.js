@@ -3,15 +3,18 @@
 // KickTimer: countdown -> random delay -> beep -> time until the bag is hit.
 // Runs entirely on the phone; see README.md for setup.
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const G = 9.80665;           // m/s^2 per g
 const SETTLE_MS = 600;       // bag must stay below threshold this long before a rep
 const CAPTURE_MS = 120;      // after the first crossing, keep reading to find the peak
 const SERIES_GAP_MS = 1500;  // at series end, show the last rep before the fastest/average screen
 const MAX_LIST = 50;
 
+// Bump when a default changes and phones should pick up the new value.
+const SETTINGS_VERSION = 2;
+
 const DEFAULTS = {
-  threshold: 2.0, countdown: 3, delayMin: 1, delayMax: 3, timeout: 3,
+  threshold: 0.6, countdown: 3, delayMin: 1, delayMax: 3, timeout: 3,
   reps: 5, rest: 5, volume: 80, latency: 0, flash: true, mode: 'single',
 };
 
@@ -22,7 +25,9 @@ const settings = loadSettings();
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem('kicktimer.settings') || '{}');
-    return { ...DEFAULTS, ...saved };
+    // v1 defaulted to 2.0 g, far too hard for young kids: replace it with the new default.
+    if (!saved.v || saved.v < 2) delete saved.threshold;
+    return { ...DEFAULTS, ...saved, v: SETTINGS_VERSION };
   } catch (e) {
     return { ...DEFAULTS };
   }
@@ -497,7 +502,7 @@ function bindSettings() {
 let lastBadge = 0;
 
 function frame(now) {
-  const meterMax = Math.max(8, settings.threshold * 2);
+  const meterMax = Math.max(2, settings.threshold * 4);
   const g = motion.frameMax;
   motion.frameMax = 0;
   el.gNow.textContent = g.toFixed(2);
@@ -532,6 +537,12 @@ el.start.addEventListener('click', onStartTap);
 el.reset.addEventListener('click', resetAll);
 el.sim.addEventListener('click', simulateHit);
 el.peakReset.addEventListener('click', () => { motion.peak = 0; });
+$('fromPeak').addEventListener('click', () => {
+  if (motion.peak < 0.15) { alert('Kick the bag first so there is a peak reading.'); return; }
+  const input = $('threshold');
+  input.value = Math.max(0.1, Math.round(motion.peak * 0.7 * 10) / 10);
+  input.dispatchEvent(new Event('input')); // same path as moving the slider: saves + repaints
+});
 el.copyLog.addEventListener('click', copyLog);
 
 document.addEventListener('keydown', (e) => {

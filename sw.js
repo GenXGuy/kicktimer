@@ -1,5 +1,5 @@
 // Offline cache for KickTimer. Bump CACHE on every release so phones pick up the new files.
-const CACHE = 'kicktimer-v1.0.0';
+const CACHE = 'kicktimer-v1.1.0';
 const FILES = [
   './',
   'index.html',
@@ -11,7 +11,9 @@ const FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's HTTP cache so an update never stores stale files.
+  const requests = FILES.map((f) => new Request(f, { cache: 'reload' }));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(requests)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {

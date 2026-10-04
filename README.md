@@ -43,11 +43,11 @@ On the iPhone:
 ## Mounting and calibrating
 - Put the phone in a padded case and strap it firmly to the **bottom** of the bag, away from feet. Mount it the same way every time.
 - Turn the volume up. The beep plays even with the silent switch on (iOS 17+).
-- **Set X:**
-  1. Watch the **Force** meter and kick the bag lightly.
-  2. Note the **peak** (tap Clear peak between tries).
-  3. Push the bag gently to see what swaying reads.
-  4. Set X between the two.
+- **Set Kick sensitivity** (the slider in the **Force** card, default **0.6 g**; lower = lighter kicks count):
+  1. Tap **Clear peak**, then have your **lightest kicker** (e.g. an 8-year-old) kick the bag.
+  2. Tap **Set to 70% of peak**. The slider moves to 70% of that kick's peak, so kicks that light or harder all count.
+  3. Push the bag gently. If swaying alone turns the meter green, raise the slider a little.
+- Updating from v1.0.0 replaces the old 2.0 g default with 0.6 g automatically.
 - Each rep waits until the bag stops swinging before it starts.
 
 ## Results
