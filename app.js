@@ -3,20 +3,23 @@
 // KickTimer: countdown -> random delay -> beep -> time until the bag is hit.
 // Runs entirely on the phone; see README.md for setup.
 
-const VERSION = '1.2.1';
+const VERSION = '1.3.0';
 const G = 9.80665;           // m/s^2 per g
 const SETTLE_MS = 600;       // bag must stay below threshold this long before a rep
 const CAPTURE_MS = 120;      // after the first crossing, keep reading to find the peak
 const SERIES_GAP_MS = 1500;  // at series end, show the last rep before the fastest/average screen
 const MAX_LIST = 50;
 const MAX_SAME_SIDE = 3;      // Random side: never more than this many in a row
+const IMPULSE_MS = 80;       // side check: add up the bag's push over this long after impact
+const CALIB_KICKS = 3;       // side calibration: kicks per side
+const SIDE_MIN = 0.3;        // side check: a push weaker than this along the left/right line is unclear
 
 // Bump when a default changes and phones should pick up the new value.
 const SETTINGS_VERSION = 2;
 
 const DEFAULTS = {
   threshold: 0.6, countdown: 3, delayMin: 1, delayMax: 3, timeout: 3,
-  reps: 5, rest: 5, volume: 80, latency: 0, flash: true, mode: 'single', cue: 'right',
+  reps: 5, rest: 5, volume: 80, latency: 0, flash: true, mode: 'single', cue: 'right', sideAxis: null,
 };
 
 // ---------- settings ----------
@@ -51,6 +54,7 @@ const el = {
   badge: $('sensorBadge'), rotateWarn: $('rotateWarn'),
   cue: $('cue'), cueWord: $('cueWord'),
   cueLeft: $('cueLeft'), cueRight: $('cueRight'), cueRandom: $('cueRandom'),
+  cueNote: $('cueNote'), sideStatus: $('sideStatus'),
 };
 
 function show(cls, status, big, detail) {
@@ -78,15 +82,48 @@ function pickSide() {
   return side;
 }
 
-function showCue(side, flash) {
+function showCue(side, flash, note) {
   el.cue.className = 'cue ' + side + (flash ? ' flash' : '');
   el.cueWord.textContent = side.toUpperCase();
+  el.cueNote.textContent = note || '';
   el.cue.hidden = false; // un-hiding restarts the blink, so it always starts fully on
 }
 
 function hideCue() {
   el.cue.hidden = true;
 }
+
+// ---------- side check ----------
+// The bag's push in the first IMPULSE_MS is turned into screen coordinates, so
+// flipping the phone over in the holder keeps the calibration valid.
+
+function screenAngle() {
+  if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+  return typeof window.orientation === 'number' ? window.orientation : 0;
+}
+
+function toScreen(x, y) {
+  const a = screenAngle() * Math.PI / 180;
+  return [x * Math.cos(a) + y * Math.sin(a), -x * Math.sin(a) + y * Math.cos(a)];
+}
+
+// side: 'left' | 'right' | '?' (too unclear to call) | '' (not calibrated)
+function judgeSide(v) {
+  const axis = settings.sideAxis;
+  const n = Math.hypot(v[0], v[1]);
+  if (!axis) return { side: '', score: 0 };
+  if (n < 1e-6) return { side: '?', score: 0 };
+  const score = (v[0] * axis[0] + v[1] * axis[1]) / n;
+  return { side: Math.abs(score) < SIDE_MIN ? '?' : score > 0 ? 'right' : 'left', score };
+}
+
+function sideTag(r) {
+  if (!r.side) return '';
+  if (r.correct === true) return `${sideName(r.side)} ✓`;
+  if (r.correct === false) return `${sideName(r.side)} ✗ hit ${sideName(r.hitSide)}`;
+  return r.hitSide === '?' ? `${sideName(r.side)} ?` : sideName(r.side);
+}
+const sideClass = (r) => (r.correct === true ? 'ok' : r.correct === false ? 'bad' : '');
 
 // ---------- audio ----------
 
@@ -123,6 +160,19 @@ function tone(freq, durSec, vol, type, at) {
   osc.connect(gain).connect(audio.destination);
   osc.start(at);
   osc.stop(at + durSec + 0.01);
+}
+
+// Game feedback after each kick: a rising chirp for the right side, a low buzz for the wrong side.
+function resultSound(good) {
+  if (!audio) return;
+  const v = 0.5 * settings.volume / 100;
+  const at = audio.currentTime + 0.02;
+  if (good) {
+    tone(880, 0.09, v, 'triangle', at);
+    tone(1320, 0.14, v, 'triangle', at + 0.1);
+  } else {
+    tone(150, 0.4, v, 'sawtooth', at);
+  }
 }
 
 // Schedules the beep and returns the performance.now() time at which it
@@ -216,14 +266,24 @@ function handleSample(s) {
         else beginCapture(s);
       }
       break;
+    case 'calib':
+      if (over) beginCapture(s);
+      break;
     case 'capture':
       if (s.g > drill.peak.g) drill.peak = s;
+      if (s.t - drill.hitT <= IMPULSE_MS) { drill.imp[0] += s.x; drill.imp[1] += s.y; }
       break;
   }
 }
 
+// On the PC: a push toward the cued side 75% of the time (always during calibration).
 function simulateHit() {
-  const ang = Math.random() * Math.PI * 2;
+  const target = drill.calib ? drill.calib.steps[drill.calib.i] : drill.side;
+  let ang = Math.random() * Math.PI * 2;
+  if (target) {
+    const side = drill.calib || Math.random() < 0.75 ? target : (target === 'left' ? 'right' : 'left');
+    ang = (side === 'right' ? 0 : Math.PI) + (Math.random() - 0.5) * 1.2;
+  }
   const g = settings.threshold + 0.5 + Math.random() * 3;
   handleSample({ t: performance.now(), g, x: Math.cos(ang) * g * G, y: Math.sin(ang) * g * G, z: 0, sim: true });
 }
@@ -246,7 +306,7 @@ async function keepAwake() {
 
 const drill = {
   state: 'idle', run: 0, timers: [], beepT: 0, hitT: 0, peak: null,
-  series: null, repNo: 0, side: null, cueShown: false, recentSides: [],
+  series: null, repNo: 0, side: null, cueShown: false, recentSides: [], imp: [0, 0], calib: null,
 };
 let results = [];   // newest first, for the on-screen list
 let log = [];       // every rep, oldest first, for Copy log
@@ -289,6 +349,7 @@ function stopDrill(msg) {
   cancelTimers();
   drill.state = 'idle';
   drill.series = null;
+  drill.calib = null;
   hideCue();
   updateStartButton();
   if (msg) show('', msg, '—', '');
@@ -308,13 +369,19 @@ function beginRep() {
   updateStartButton();
   const repLabel = drill.series ? `Rep ${drill.repNo} of ${drill.series.total}` : '';
   show('waiting', 'Hold the bag still', '…', repLabel);
+  whenSettled(() => {
+    if (settings.countdown > 0) countdown(settings.countdown, repLabel);
+    else waitPhase(repLabel);
+  });
+}
+
+function whenSettled(fn) {
   const start = performance.now();
   const check = () => {
     const now = performance.now();
     const settled = !sensorLive() || (now - motion.lastAbove >= SETTLE_MS && now - start >= 300);
-    if (!settled) { later(50, check); return; }
-    if (settings.countdown > 0) countdown(settings.countdown, repLabel);
-    else waitPhase(repLabel);
+    if (settled) fn();
+    else later(50, check);
   };
   later(50, check);
 }
@@ -354,15 +421,21 @@ function fireBeep() {
 }
 
 function beginCapture(s) {
+  const calib = drill.state === 'calib';
   drill.state = 'capture';
   drill.hitT = s.t;
   drill.peak = s;
+  drill.imp = [s.x, s.y];
   later(CAPTURE_MS, () => {
+    const push = toScreen(drill.imp[0], drill.imp[1]);
+    if (calib) { calibKick(push); return; }
     const p = drill.peak;
     const angle = (Math.atan2(p.y, p.x) * 180 / Math.PI + 360) % 360;
+    const judged = judgeSide(push);
     finishRep({
       kind: 'hit', ms: drill.hitT - drill.beepT,
       peakG: p.g, x: p.x, y: p.y, z: p.z, angle, sim: s.sim,
+      hitSide: judged.side, sideScore: judged.score, push, screenAngle: screenAngle(),
     });
   });
 }
@@ -377,12 +450,22 @@ function finishRep(r) {
   hideCue();
   r.rep = drill.repNo;
   r.side = drill.cueShown ? drill.side : ''; // blank for false starts: no side was shown yet
+  // true/false only when the side could be judged; null = not calibrated or unclear
+  r.correct = r.kind === 'hit' && r.side && (r.hitSide === 'left' || r.hitSide === 'right') ? r.hitSide === r.side : null;
   r.mode = drill.series ? 'series' : 'single';
   r.when = new Date();
   addResult(r);
 
   if (r.kind === 'hit') {
-    show('good', 'Reaction time', fmt(r.ms), `${sideName(r.side)} · peak ${r.peakG.toFixed(1)} g · dir ${Math.round(r.angle)}°${r.sim ? ' · simulated' : ''}`);
+    const extra = `peak ${r.peakG.toFixed(1)} g · dir ${Math.round(r.angle)}°${r.sim ? ' · simulated' : ''}`;
+    if (r.correct === false) {
+      show('bad', 'Wrong side!', fmt(r.ms), `Arrow said ${sideName(r.side)} · kicked ${sideName(r.hitSide)}`);
+      resultSound(false);
+    } else {
+      const sideTxt = r.correct ? `✓ ${sideName(r.side)} side` : r.hitSide === '?' ? `${sideName(r.side)} · side unclear` : sideName(r.side);
+      show('good', 'Reaction time', fmt(r.ms), `${sideTxt} · ${extra}`);
+      if (r.correct) resultSound(true);
+    }
   } else if (r.kind === 'false') {
     show('bad', 'Too early', 'FALSE START', 'Kicked before the beep');
   } else {
@@ -419,9 +502,9 @@ function renderResults() {
   results.forEach((r) => {
     const li = document.createElement('li');
     if (r.kind === 'hit') {
-      li.innerHTML = `<span class="t">${fmt(r.ms)}</span><span class="x">${sideName(r.side)} · ${r.peakG.toFixed(1)} g · ${Math.round(r.angle)}°${r.sim ? ' · sim' : ''}</span>`;
+      li.innerHTML = `<span class="t ${r.correct === false ? 'bad' : ''}">${fmt(r.ms)}</span><span class="x"><span class="${sideClass(r)}">${sideTag(r)}</span> · ${r.peakG.toFixed(1)} g · ${Math.round(r.angle)}°${r.sim ? ' · sim' : ''}</span>`;
     } else {
-      li.innerHTML = `<span class="bad">${r.kind === 'false' ? 'FALSE START' : 'NO KICK'}</span>${r.side ? `<span class="x">${sideName(r.side)}</span>` : ''}`;
+      li.innerHTML = `<span class="bad">${r.kind === 'false' ? 'FALSE START' : 'NO KICK'}</span>${r.side ? `<span class="x">${sideTag(r)}</span>` : ''}`;
     }
     el.results.appendChild(li);
   });
@@ -429,11 +512,14 @@ function renderResults() {
   el.results.setAttribute('reversed', '');
 }
 
-// Fastest and average over the hits only; false starts and no-kicks are left out.
+// Fastest and average over the hits only; false starts, no-kicks and wrong-side kicks are left out.
 function seriesStats(list) {
-  const hits = list.filter((r) => r.kind === 'hit').map((r) => r.ms);
+  const hits = list.filter((r) => r.kind === 'hit' && r.correct !== false).map((r) => r.ms);
   return {
     hits: hits.length,
+    checked: list.some((r) => r.correct !== null),
+    correct: list.filter((r) => r.correct === true).length,
+    wrong: list.filter((r) => r.correct === false).length,
     fastest: hits.length ? fmt(Math.min(...hits)) : '—',
     average: hits.length ? fmt(hits.reduce((a, b) => a + b, 0) / hits.length) : '—',
   };
@@ -444,13 +530,15 @@ function showSummary(list) {
   const falses = list.filter((r) => r.kind === 'false').length;
   const none = list.filter((r) => r.kind === 'none').length;
   const reps = list.map((r, i) =>
-    `<li><span class="n">${i + 1}</span>${r.kind === 'hit' ? fmt(r.ms) : `<span class="bad">${r.kind === 'false' ? 'FALSE START' : 'NO KICK'}</span>`}<span class="side">${sideName(r.side)}</span></li>`
+    `<li><span class="n">${i + 1}</span>${r.kind === 'hit' ? fmt(r.ms) : `<span class="bad">${r.kind === 'false' ? 'FALSE START' : 'NO KICK'}</span>`}<span class="side ${sideClass(r)}">${sideTag(r)}</span></li>`
   ).join('');
   el.summary.innerHTML =
     `Series done: ${st.hits} of ${list.length} kicks counted` +
     (falses ? ` · ${falses} false start${falses > 1 ? 's' : ''}` : '') +
     (none ? ` · ${none} no kick` : '') +
-    `<div class="nums"><div>Fastest<b>${st.fastest}</b></div><div>Average<b>${st.average}</b></div></div>` +
+    (st.wrong ? ` · ${st.wrong} wrong side` : '') +
+    `<div class="nums"><div>Fastest<b>${st.fastest}</b></div><div>Average<b>${st.average}</b></div>` +
+    (st.checked ? `<div>Correct side<b>${st.correct}/${list.length}</b></div>` : '') + `</div>` +
     `<ol class="reps">${reps}</ol>`;
   el.summary.hidden = false;
 }
@@ -458,7 +546,7 @@ function showSummary(list) {
 function showSeriesDisplay(list) {
   if (running()) return; // a new drill already started
   const st = seriesStats(list);
-  show('good', `Series done · ${st.hits} of ${list.length} kicks`, '', '');
+  show('good', `Series done · ${st.hits} of ${list.length} kicks`, '', st.checked ? `<b class="score">Correct side: ${st.correct} of ${list.length}</b>` : '');
   el.big.innerHTML =
     `<div class="pair"><div><span>Fastest</span>${st.fastest}</div><div><span>Average</span>${st.average}</div></div>`;
 }
@@ -474,7 +562,7 @@ function resetAll() {
 }
 
 function copyLog() {
-  const head = 'time,mode,rep,result,reaction_ms,peak_g,x,y,z,angle_deg,simulated,side';
+  const head = 'time,mode,rep,result,reaction_ms,peak_g,x,y,z,angle_deg,simulated,side,hit_side,side_score,push_x,push_y,screen_angle';
   const rows = log.map((r) => [
     r.when.toISOString(), r.mode, r.rep, r.kind,
     r.kind === 'hit' ? r.ms.toFixed(1) : '',
@@ -485,6 +573,11 @@ function copyLog() {
     r.kind === 'hit' ? r.angle.toFixed(0) : '',
     r.kind === 'hit' ? (r.sim ? 1 : 0) : '',
     r.side || '',
+    r.kind === 'hit' ? r.hitSide : '',
+    r.kind === 'hit' ? r.sideScore.toFixed(2) : '',
+    r.kind === 'hit' ? r.push[0].toFixed(2) : '',
+    r.kind === 'hit' ? r.push[1].toFixed(2) : '',
+    r.kind === 'hit' ? r.screenAngle : '',
   ].join(','));
   const text = [head, ...rows].join('\n');
   const done = () => alert(`Copied ${rows.length} row${rows.length === 1 ? '' : 's'}. Paste into Notes or an email.`);
@@ -549,6 +642,74 @@ function bindSettings() {
   });
   Object.entries(cues).forEach(([key, btn]) => btn.addEventListener('click', () => { settings.cue = key; saveSettings(); paintCue(); }));
   paintCue();
+  paintSideStatus();
+}
+
+function paintSideStatus() {
+  el.sideStatus.innerHTML = settings.sideAxis
+    ? 'Side check: <span class="on">on</span>'
+    : 'Side check: off · calibrate to turn on';
+}
+
+// ---------- side calibration ----------
+// Kick the right side CALIB_KICKS times, then the left side, with the phone in
+// its holder. The app learns which way the bag moves for each side.
+
+function onCalibTap() {
+  if (running()) stopDrill('');
+  const ready = Promise.all([startMotion(), startAudio()]);
+  keepAwake();
+  ready.then(() => {
+    cancelTimers();
+    const steps = [...Array(CALIB_KICKS).fill('right'), ...Array(CALIB_KICKS).fill('left')];
+    drill.calib = { steps, i: 0, kicks: [] };
+    calibStep();
+  });
+}
+
+function calibStep() {
+  const c = drill.calib;
+  const side = c.steps[c.i];
+  const n = c.steps.slice(0, c.i + 1).filter((x) => x === side).length;
+  drill.state = 'calibSettle';
+  updateStartButton();
+  hideCue();
+  show('waiting', 'Calibrating sides', 'Hold still', `Kick ${c.i + 1} of ${c.steps.length}`);
+  whenSettled(() => {
+    drill.state = 'calib';
+    showCue(side, false, `Calibrating · ${sideName(side)} kick ${n} of ${CALIB_KICKS} · tap screen to cancel`);
+  });
+}
+
+function calibKick(push) {
+  const c = drill.calib;
+  const n = Math.hypot(push[0], push[1]) || 1;
+  c.kicks.push({ side: c.steps[c.i], v: [push[0] / n, push[1] / n] });
+  resultSound(true);
+  c.i++;
+  if (c.i < c.steps.length) calibStep();
+  else finishCalibration(c.kicks);
+}
+
+function finishCalibration(kicks) {
+  const mean = (side) => {
+    const k = kicks.filter((x) => x.side === side);
+    return [k.reduce((a, x) => a + x.v[0], 0) / k.length, k.reduce((a, x) => a + x.v[1], 0) / k.length];
+  };
+  const r = mean('right'), l = mean('left');
+  const d = [r[0] - l[0], r[1] - l[1]];
+  const n = Math.hypot(d[0], d[1]);
+  stopDrill('');
+  if (n < 0.5) {
+    show('bad', 'Calibration failed', 'TRY AGAIN', 'Right and left kicks moved the bag the same way. Kick firmly on each side.');
+    return;
+  }
+  settings.sideAxis = [d[0] / n, d[1] / n];
+  saveSettings();
+  paintSideStatus();
+  const ok = kicks.filter((k) => judgeSide(k.v).side === k.side).length;
+  show(ok === kicks.length ? 'good' : 'bad', 'Side check on', `${ok} of ${kicks.length}`,
+    ok === kicks.length ? 'Every calibration kick was sorted to the right side' : 'Some kicks were unclear. Calibrate again for better results.');
 }
 
 // ---------- live meter + sensor badge ----------
@@ -608,6 +769,10 @@ $('fromPeak').addEventListener('click', () => {
   input.dispatchEvent(new Event('input')); // same path as moving the slider: saves + repaints
 });
 el.copyLog.addEventListener('click', copyLog);
+$('calibBtn').addEventListener('click', onCalibTap);
+$('clearCalib').addEventListener('click', () => { settings.sideAxis = null; saveSettings(); paintSideStatus(); });
+// Tap the full-screen arrow to stop (it covers the Stop button)
+el.cue.addEventListener('click', () => { if (running()) stopDrill(drill.calib ? 'Calibration cancelled' : 'Stopped'); });
 
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); simulateHit(); }

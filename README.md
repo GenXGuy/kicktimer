@@ -64,9 +64,16 @@ On the iPhone:
 - **Ready time** (Settings): how long READY shows before the random delay starts, on every rep. The beep is the only sound.
 - **Rest between kicks** (Settings, series only): at least 5 s, default 5. The last time stays on screen with "Rest · next kick in 5…" while the student gets back into stance, then READY starts again.
 - **NO KICK**: nothing above X within the timeout.
-- **Series mode**: runs N reps (default 5). At the end, the main display shows **Fastest** and **Average** in large numbers, and the card below lists every kick. False starts and no-kicks are left out of Fastest and Average.
-- **Kick side** (the ◀ Left | Right ▶ | Random buttons under Single/Series, default **Right**): at the beep, the whole screen turns into a big blinking amber arrow with LEFT or RIGHT under it. It stays up until the kick lands or the timeout runs out. Left and right are as seen by the student **looking at the screen**. The arrow is hidden during READY, so in Random mode students can't guess the side early. Random never picks the same side more than 3 times in a row. The side is shown with each result, in the series list, and in the Copy log `side` column (blank for a false start, since no arrow had shown yet).
-- **Peak g and direction (°)**: shown for each hit. **Copy log** copies all reps as CSV. This is data for the future left/right detection.
+- **Series mode**: runs N reps (default 5). At the end, the main display shows **Fastest** and **Average** in large numbers, and the card below lists every kick. False starts, no-kicks and wrong-side kicks are left out of Fastest and Average. With side check on, it also shows **Correct side: 4 of 5**.
+- **Kick side** (the ◀ Left | Right ▶ | Random buttons under Single/Series, default **Right**): at the beep, the whole screen turns into a big blinking amber arrow with LEFT or RIGHT under it. It stays up until the kick lands or the timeout runs out. Left and right are as seen by the student **looking at the screen**. The arrow is hidden during READY, so in Random mode students can't guess the side early. Random never picks the same side more than 3 times in a row. The side is shown with each result, in the series list, and in the Copy log `side` column (blank for a false start, since no arrow had shown yet). Tap the arrow screen to stop (it covers the Stop button).
+- **Side check** (v1.3.0, round kicks): the app tells which side of the bag was kicked and checks it against the arrow.
+  1. With the phone in its holder, tap **Calibrate sides** (under the Left/Right/Random buttons).
+  2. The arrow shows RIGHT: kick the right side of the bag 3 times, waiting for the arrow each time. Then LEFT 3 times. A chirp confirms each kick.
+  3. It shows how many of the 6 kicks it sorted correctly (aim for 6 of 6) and "Side check: **on**". The calibration is saved, and it still works if the phone is flipped over in the holder. Recalibrate if the holder or the bag changes.
+  - After each kick: **✓ Right side** with a chirp, or **Wrong side!** in red with a buzz. A kick it can't call clearly shows "side unclear" and doesn't count either way.
+  - Settings → **Turn off side check** clears the calibration.
+  - Copy log adds `hit_side`, `side_score` (+1 = clearly right, −1 = clearly left), `push_x`, `push_y` and `screen_angle`, for tuning.
+- **Peak g and direction (°)**: shown for each hit. **Copy log** copies all reps as CSV. Side check uses the bag's push over the first 80 ms after impact (`push_x`, `push_y`), which is steadier than the single strongest reading (the °).
 
 ## Accuracy notes
 - Safari reports motion about 60 times a second, so times are accurate to about ±17 ms. That's fine for kick reactions (about 200–600 ms).
@@ -74,4 +81,3 @@ On the iPhone:
 
 ## Future ideas
 - Voice cue "Right!" / "Left!" in place of the beep (the full-screen arrow cue was added in v1.2.0).
-- Side detection from push direction (round kicks), with "WRONG SIDE" flagged.

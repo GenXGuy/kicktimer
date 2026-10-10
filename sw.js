@@ -1,5 +1,5 @@
 ﻿// Offline cache for KickTimer. Bump CACHE on every release so phones pick up the new files.
-const CACHE = 'kicktimer-v1.2.1';
+const CACHE = 'kicktimer-v1.3.0';
 const FILES = [
   './',
   'index.html',

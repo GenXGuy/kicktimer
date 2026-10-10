@@ -90,6 +90,9 @@ html, body {
 .seg { font: inherit; font-size: 16px; font-weight: 600; background: none; border: 0; color: var(--muted); padding: 10px; border-radius: 10px; cursor: pointer; }
 .seg.on { background: var(--line); color: var(--text); }
 .segmented.three { grid-template-columns: 1fr 1fr 1fr; }
+.side-row { margin-top: -4px; padding: 0 4px; }
+.side-row .hint { margin: 0; }
+.side-row .on { color: var(--go); font-weight: 700; }
 
 /* Kick-side cue: covers the whole screen so it can be seen from the kicking spot */
 .cue {
@@ -102,7 +105,9 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 3vh;
+  cursor: pointer; /* iOS only sends taps to a div that looks clickable */
 }
+.cue-note { position: absolute; left: 0; right: 0; bottom: max(4vh, env(safe-area-inset-bottom)); text-align: center; font-size: 18px; color: var(--muted); padding: 0 16px; }
 .cue[hidden] { display: none; }
 .cue-arrow { width: min(96vw, 110vh); max-height: 70vh; fill: var(--accent); animation: blinker 0.6s infinite; }
 .cue.left .cue-arrow { transform: scaleX(-1); }
@@ -149,6 +154,9 @@ html, body {
 .summary .reps .n { color: var(--muted); width: 1.5em; text-align: right; }
 .summary .reps .bad { color: var(--bad); font-weight: 700; }
 .summary .reps .side { color: var(--muted); margin-left: auto; }
+.summary .reps .side.ok, .results .ok { color: var(--go); }
+.summary .reps .side.bad { color: var(--bad); }
+.detail .score { font-size: 22px; color: var(--text); }
 
 /* Series end: fastest + average in the main display */
 .big .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: clamp(34px, 11vw, 60px); }
