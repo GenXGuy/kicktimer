@@ -89,6 +89,42 @@ html, body {
 .segmented { display: grid; grid-template-columns: 1fr 1fr; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
 .seg { font: inherit; font-size: 16px; font-weight: 600; background: none; border: 0; color: var(--muted); padding: 10px; border-radius: 10px; cursor: pointer; }
 .seg.on { background: var(--line); color: var(--text); }
+.segmented.three { grid-template-columns: 1fr 1fr 1fr; }
+
+/* Kick-side cue: covers the whole screen so it can be seen from the kicking spot */
+.cue {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3vh;
+}
+.cue[hidden] { display: none; }
+.cue-arrow { width: min(96vw, 110vh); max-height: 70vh; fill: var(--accent); animation: blinker 0.6s infinite; }
+.cue.left .cue-arrow { transform: scaleX(-1); }
+.cue-word { font-size: clamp(60px, 20vw, 160px); font-weight: 900; letter-spacing: 6px; color: var(--accent); line-height: 1; }
+.cue.flash { background: var(--go); }
+.cue.flash .cue-arrow { fill: #000; }
+.cue.flash .cue-word { color: #000; }
+/* Phone mounted sideways: arrow and word side by side, word on the far side from the arrow tip */
+@media (orientation: landscape) {
+  .cue { flex-direction: row; gap: 4vw; padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
+  .cue-arrow { height: 65vh; width: calc(65vh * 1.25); max-height: none; }
+  .cue-word { font-size: min(11vw, 26vh); }
+  .cue.right .cue-word { order: -1; }
+}
+
+.warn { background: var(--bad); color: #fff; border-radius: 14px; padding: 12px 14px; font-size: 16px; line-height: 1.35; }
+.warn[hidden] { display: none; }
+/* Fully on the moment it appears (the cue is timed), then blinks like a turn signal */
+@keyframes blinker {
+  0%, 64% { opacity: 1; }
+  65%, 100% { opacity: 0.12; }
+}
 
 /* Cards */
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
@@ -112,6 +148,7 @@ html, body {
 .summary .reps li { display: flex; gap: 12px; padding: 4px 0; border-top: 1px solid var(--line); }
 .summary .reps .n { color: var(--muted); width: 1.5em; text-align: right; }
 .summary .reps .bad { color: var(--bad); font-weight: 700; }
+.summary .reps .side { color: var(--muted); margin-left: auto; }
 
 /* Series end: fastest + average in the main display */
 .big .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: clamp(34px, 11vw, 60px); }

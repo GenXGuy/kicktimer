@@ -48,6 +48,8 @@ On the iPhone:
 
 ## Mounting and calibrating
 - Put the phone in a padded case and strap it firmly to the **bottom** of the bag, away from feet. Mount it the same way every time.
+- **Mounted sideways (landscape)?** Either side up works, but the screen **must rotate**: turn off **Rotation Lock** (swipe down from the top-right corner). If the phone is on its side and the screen didn't turn, a red warning shows at the top after **Start**, because the arrow would point up/down instead of left/right. In landscape the arrow and the word LEFT/RIGHT sit side by side.
+- Coming from v1.2.0 or earlier, the home-screen app may still be locked to portrait. If it won't turn sideways with Rotation Lock off, remove it from the home screen and add it again from Safari.
 - Turn the volume up. The beep plays even with the silent switch on (iOS 17+).
 - **Set Kick sensitivity** (the slider in the **Force** card, default **0.6 g**; lower = lighter kicks count):
   1. Tap **Clear peak**, then have your **lightest kicker** (e.g. an 8-year-old) kick the bag.
@@ -63,6 +65,7 @@ On the iPhone:
 - **Rest between kicks** (Settings, series only): at least 5 s, default 5. The last time stays on screen with "Rest · next kick in 5…" while the student gets back into stance, then READY starts again.
 - **NO KICK**: nothing above X within the timeout.
 - **Series mode**: runs N reps (default 5). At the end, the main display shows **Fastest** and **Average** in large numbers, and the card below lists every kick. False starts and no-kicks are left out of Fastest and Average.
+- **Kick side** (the ◀ Left | Right ▶ | Random buttons under Single/Series, default **Right**): at the beep, the whole screen turns into a big blinking amber arrow with LEFT or RIGHT under it. It stays up until the kick lands or the timeout runs out. Left and right are as seen by the student **looking at the screen**. The arrow is hidden during READY, so in Random mode students can't guess the side early. Random never picks the same side more than 3 times in a row. The side is shown with each result, in the series list, and in the Copy log `side` column (blank for a false start, since no arrow had shown yet).
 - **Peak g and direction (°)**: shown for each hit. **Copy log** copies all reps as CSV. This is data for the future left/right detection.
 
 ## Accuracy notes
@@ -70,6 +73,5 @@ On the iPhone:
 - **Latency offset** (Settings) shifts every time by a fixed number of ms if you want to correct for speaker delay. It applies equally to everyone, so comparisons stay fair.
 
 ## Future ideas
-- Voice cue "Right!" / "Left!" in place of the beep.
-- Full-screen arrow cue (voice, arrow, or both).
+- Voice cue "Right!" / "Left!" in place of the beep (the full-screen arrow cue was added in v1.2.0).
 - Side detection from push direction (round kicks), with "WRONG SIDE" flagged.

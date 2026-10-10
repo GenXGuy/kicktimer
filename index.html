@@ -21,6 +21,8 @@
       <span id="sensorBadge" class="badge">sensor: —</span>
     </header>
 
+    <div id="rotateWarn" class="warn" hidden>The phone is on its side but the screen didn't turn. Swipe down from the top-right corner and turn off <b>Rotation Lock</b>, or the arrow will point the wrong way.</div>
+
     <!-- Big display: countdown numbers, WAIT, result time -->
     <section id="display" class="display" aria-live="polite">
       <div id="status" class="status">Tap Start</div>
@@ -36,6 +38,13 @@
     <div class="segmented" role="radiogroup" aria-label="Mode">
       <button id="modeSingle" class="seg" role="radio">Single</button>
       <button id="modeSeries" class="seg" role="radio">Series</button>
+    </div>
+
+    <!-- Which side to kick. Left/right are as seen looking at the screen. -->
+    <div class="segmented three" role="radiogroup" aria-label="Kick side">
+      <button id="cueLeft" class="seg" role="radio">&#x25C0;&#xFE0E; Left</button>
+      <button id="cueRight" class="seg" role="radio">Right &#x25B6;&#xFE0E;</button>
+      <button id="cueRandom" class="seg" role="radio">Random</button>
     </div>
 
     <button id="simBtn" class="btn sim" hidden>Simulate hit (Space)</button>
@@ -103,6 +112,12 @@
 
     <footer class="footer">v<span id="version"></span> · works offline once installed</footer>
   </main>
+
+  <!-- Full-screen blinking arrow, shown from the beep until the kick (or timeout) -->
+  <div id="cue" class="cue" hidden>
+    <svg class="cue-arrow" viewBox="0 0 100 80" aria-hidden="true"><path d="M4 26 H52 V4 L96 40 L52 76 V54 H4 Z"/></svg>
+    <div id="cueWord" class="cue-word">RIGHT</div>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>

@@ -3,19 +3,20 @@
 // KickTimer: countdown -> random delay -> beep -> time until the bag is hit.
 // Runs entirely on the phone; see README.md for setup.
 
-const VERSION = '1.1.1';
+const VERSION = '1.2.1';
 const G = 9.80665;           // m/s^2 per g
 const SETTLE_MS = 600;       // bag must stay below threshold this long before a rep
 const CAPTURE_MS = 120;      // after the first crossing, keep reading to find the peak
 const SERIES_GAP_MS = 1500;  // at series end, show the last rep before the fastest/average screen
 const MAX_LIST = 50;
+const MAX_SAME_SIDE = 3;      // Random side: never more than this many in a row
 
 // Bump when a default changes and phones should pick up the new value.
 const SETTINGS_VERSION = 2;
 
 const DEFAULTS = {
   threshold: 0.6, countdown: 3, delayMin: 1, delayMax: 3, timeout: 3,
-  reps: 5, rest: 5, volume: 80, latency: 0, flash: true, mode: 'single',
+  reps: 5, rest: 5, volume: 80, latency: 0, flash: true, mode: 'single', cue: 'right',
 };
 
 // ---------- settings ----------
@@ -47,7 +48,9 @@ const el = {
   gNow: $('gNow'), gPeak: $('gPeak'), peakReset: $('peakReset'),
   meterFill: $('meterFill'), meterThresh: $('meterThresh'),
   summary: $('summary'), results: $('results'), copyLog: $('copyLog'),
-  badge: $('sensorBadge'),
+  badge: $('sensorBadge'), rotateWarn: $('rotateWarn'),
+  cue: $('cue'), cueWord: $('cueWord'),
+  cueLeft: $('cueLeft'), cueRight: $('cueRight'), cueRandom: $('cueRandom'),
 };
 
 function show(cls, status, big, detail) {
@@ -58,6 +61,32 @@ function show(cls, status, big, detail) {
 }
 
 const fmt = (ms) => (ms / 1000).toFixed(3) + ' s';
+const sideName = (side) => (side === 'left' ? 'Left' : side === 'right' ? 'Right' : '');
+
+// ---------- kick-side cue ----------
+// Left/right are as seen by the student looking at the screen.
+
+function pickSide() {
+  if (settings.cue !== 'random') return settings.cue;
+  const recent = drill.recentSides;
+  let side = Math.random() < 0.5 ? 'left' : 'right';
+  if (recent.length >= MAX_SAME_SIDE && recent.slice(-MAX_SAME_SIDE).every((x) => x === side)) {
+    side = side === 'left' ? 'right' : 'left';
+  }
+  recent.push(side);
+  if (recent.length > MAX_SAME_SIDE) recent.shift();
+  return side;
+}
+
+function showCue(side, flash) {
+  el.cue.className = 'cue ' + side + (flash ? ' flash' : '');
+  el.cueWord.textContent = side.toUpperCase();
+  el.cue.hidden = false; // un-hiding restarts the blink, so it always starts fully on
+}
+
+function hideCue() {
+  el.cue.hidden = true;
+}
 
 // ---------- audio ----------
 
@@ -118,7 +147,7 @@ function scheduleBeep() {
 
 // ---------- motion sensor ----------
 
-const motion = { listening: false, lastEventAt: -1e9, frameMax: 0, peak: 0, lastAbove: -1e9, hz: 0, _count: 0 };
+const motion = { listening: false, lastEventAt: -1e9, frameMax: 0, peak: 0, lastAbove: -1e9, hz: 0, _count: 0, gx: 0, gy: 0, gz: 0 };
 
 function startMotion() {
   // Must be called synchronously from a tap on iOS.
@@ -157,6 +186,13 @@ function onMotion(e) {
     g = Math.abs(Math.hypot(x, y, z) / G - 1);
   } else {
     return; // desktop browsers fire empty events
+  }
+  const ag = e.accelerationIncludingGravity;
+  if (ag && ag.x !== null) {
+    // Smoothed gravity, so a kick or a swinging bag doesn't flip the rotation check
+    motion.gx += (ag.x - motion.gx) * 0.05;
+    motion.gy += (ag.y - motion.gy) * 0.05;
+    motion.gz += (ag.z - motion.gz) * 0.05;
   }
   motion.lastEventAt = performance.now();
   motion._count++;
@@ -210,7 +246,7 @@ async function keepAwake() {
 
 const drill = {
   state: 'idle', run: 0, timers: [], beepT: 0, hitT: 0, peak: null,
-  series: null, repNo: 0,
+  series: null, repNo: 0, side: null, cueShown: false, recentSides: [],
 };
 let results = [];   // newest first, for the on-screen list
 let log = [];       // every rep, oldest first, for Copy log
@@ -243,6 +279,7 @@ function onStartTap() {
     cancelTimers();
     drill.series = settings.mode === 'series' ? { total: settings.reps, list: [] } : null;
     drill.repNo = 0;
+    drill.recentSides = [];
     el.summary.hidden = true;
     beginRep();
   });
@@ -252,6 +289,7 @@ function stopDrill(msg) {
   cancelTimers();
   drill.state = 'idle';
   drill.series = null;
+  hideCue();
   updateStartButton();
   if (msg) show('', msg, '—', '');
 }
@@ -265,6 +303,8 @@ function restCountdown(n) {
 function beginRep() {
   drill.state = 'settle';
   drill.repNo++;
+  drill.side = null;
+  drill.cueShown = false;
   updateStartButton();
   const repLabel = drill.series ? `Rep ${drill.repNo} of ${drill.series.total}` : '';
   show('waiting', 'Hold the bag still', '…', repLabel);
@@ -296,14 +336,17 @@ function waitPhase(repLabel) {
 }
 
 function fireBeep() {
+  drill.side = pickSide();
   drill.beepT = scheduleBeep();
   drill.state = 'armed';
   const now = performance.now();
   const soundAt = drill.beepT - settings.latency;
   later(soundAt - now, () => {
     if (drill.state !== 'armed') return;
-    show(settings.flash ? 'armed flash' : 'armed', 'Kick!', 'GO', '');
-    if (settings.flash) later(250, () => { if (drill.state === 'armed') el.display.classList.remove('flash'); });
+    show(settings.flash ? 'armed flash' : 'armed', `Kick ${sideName(drill.side).toLowerCase()}!`, 'GO', '');
+    showCue(drill.side, settings.flash);
+    drill.cueShown = true;
+    if (settings.flash) later(250, () => { if (drill.state === 'armed') { el.display.classList.remove('flash'); el.cue.classList.remove('flash'); } });
   });
   later(drill.beepT + settings.timeout * 1000 - now, () => {
     if (drill.state === 'armed') finishRep({ kind: 'none' });
@@ -331,17 +374,19 @@ function falseStart() {
 function finishRep(r) {
   cancelTimers();
   drill.state = 'result';
+  hideCue();
   r.rep = drill.repNo;
+  r.side = drill.cueShown ? drill.side : ''; // blank for false starts: no side was shown yet
   r.mode = drill.series ? 'series' : 'single';
   r.when = new Date();
   addResult(r);
 
   if (r.kind === 'hit') {
-    show('good', 'Reaction time', fmt(r.ms), `peak ${r.peakG.toFixed(1)} g · dir ${Math.round(r.angle)}°${r.sim ? ' · simulated' : ''}`);
+    show('good', 'Reaction time', fmt(r.ms), `${sideName(r.side)} · peak ${r.peakG.toFixed(1)} g · dir ${Math.round(r.angle)}°${r.sim ? ' · simulated' : ''}`);
   } else if (r.kind === 'false') {
     show('bad', 'Too early', 'FALSE START', 'Kicked before the beep');
   } else {
-    show('bad', 'Timed out', 'NO KICK', `Nothing above ${settings.threshold.toFixed(1)} g in ${settings.timeout} s`);
+    show('bad', 'Timed out', 'NO KICK', `${sideName(r.side)} · nothing above ${settings.threshold.toFixed(1)} g in ${settings.timeout} s`);
   }
 
   const s = drill.series;
@@ -374,9 +419,9 @@ function renderResults() {
   results.forEach((r) => {
     const li = document.createElement('li');
     if (r.kind === 'hit') {
-      li.innerHTML = `<span class="t">${fmt(r.ms)}</span><span class="x">${r.peakG.toFixed(1)} g · ${Math.round(r.angle)}°${r.sim ? ' · sim' : ''}</span>`;
+      li.innerHTML = `<span class="t">${fmt(r.ms)}</span><span class="x">${sideName(r.side)} · ${r.peakG.toFixed(1)} g · ${Math.round(r.angle)}°${r.sim ? ' · sim' : ''}</span>`;
     } else {
-      li.innerHTML = `<span class="bad">${r.kind === 'false' ? 'FALSE START' : 'NO KICK'}</span>`;
+      li.innerHTML = `<span class="bad">${r.kind === 'false' ? 'FALSE START' : 'NO KICK'}</span>${r.side ? `<span class="x">${sideName(r.side)}</span>` : ''}`;
     }
     el.results.appendChild(li);
   });
@@ -399,7 +444,7 @@ function showSummary(list) {
   const falses = list.filter((r) => r.kind === 'false').length;
   const none = list.filter((r) => r.kind === 'none').length;
   const reps = list.map((r, i) =>
-    `<li><span class="n">${i + 1}</span>${r.kind === 'hit' ? fmt(r.ms) : `<span class="bad">${r.kind === 'false' ? 'FALSE START' : 'NO KICK'}</span>`}</li>`
+    `<li><span class="n">${i + 1}</span>${r.kind === 'hit' ? fmt(r.ms) : `<span class="bad">${r.kind === 'false' ? 'FALSE START' : 'NO KICK'}</span>`}<span class="side">${sideName(r.side)}</span></li>`
   ).join('');
   el.summary.innerHTML =
     `Series done: ${st.hits} of ${list.length} kicks counted` +
@@ -429,7 +474,7 @@ function resetAll() {
 }
 
 function copyLog() {
-  const head = 'time,mode,rep,result,reaction_ms,peak_g,x,y,z,angle_deg,simulated';
+  const head = 'time,mode,rep,result,reaction_ms,peak_g,x,y,z,angle_deg,simulated,side';
   const rows = log.map((r) => [
     r.when.toISOString(), r.mode, r.rep, r.kind,
     r.kind === 'hit' ? r.ms.toFixed(1) : '',
@@ -439,6 +484,7 @@ function copyLog() {
     r.kind === 'hit' ? r.z.toFixed(2) : '',
     r.kind === 'hit' ? r.angle.toFixed(0) : '',
     r.kind === 'hit' ? (r.sim ? 1 : 0) : '',
+    r.side || '',
   ].join(','));
   const text = [head, ...rows].join('\n');
   const done = () => alert(`Copied ${rows.length} row${rows.length === 1 ? '' : 's'}. Paste into Notes or an email.`);
@@ -495,9 +541,26 @@ function bindSettings() {
   el.modeSingle.addEventListener('click', () => { settings.mode = 'single'; saveSettings(); paintMode(); });
   el.modeSeries.addEventListener('click', () => { settings.mode = 'series'; saveSettings(); paintMode(); });
   paintMode();
+
+  const cues = { left: el.cueLeft, right: el.cueRight, random: el.cueRandom };
+  const paintCue = () => Object.entries(cues).forEach(([key, btn]) => {
+    btn.classList.toggle('on', settings.cue === key);
+    btn.setAttribute('aria-checked', settings.cue === key);
+  });
+  Object.entries(cues).forEach(([key, btn]) => btn.addEventListener('click', () => { settings.cue = key; saveSettings(); paintCue(); }));
+  paintCue();
 }
 
 // ---------- live meter + sensor badge ----------
+
+// True when gravity says the phone is on its side (landscape) but the page is
+// still laid out portrait, e.g. Rotation Lock is on. Uses only which axis gravity
+// is along, not its sign, so it works the same on every iOS version.
+function screenNotRotated() {
+  const ax = Math.abs(motion.gx), ay = Math.abs(motion.gy), az = Math.abs(motion.gz);
+  const sideways = ax > 0.5 * G && ax > 2 * ay && ax > az;
+  return sideways && window.innerHeight > window.innerWidth;
+}
 
 let lastBadge = 0;
 
@@ -527,6 +590,7 @@ function frame(now) {
       el.badge.className = 'badge';
     }
     el.sim.hidden = live || !motion.listening;
+    el.rotateWarn.hidden = !(live && screenNotRotated());
   }
   requestAnimationFrame(frame);
 }
