@@ -32,7 +32,7 @@
 
     <div class="controls">
       <button id="startBtn" class="btn primary">Start</button>
-      <button id="resetBtn" class="btn">Reset</button>
+      <button id="resetBtn" class="btn hold"><span>Reset<small id="resetHint">hold</small></span></button>
     </div>
 
     <div class="segmented" role="radiogroup" aria-label="Mode">
@@ -46,15 +46,21 @@
       <button id="cueRight" class="seg" role="radio">Right &#x25B6;&#xFE0E;</button>
       <button id="cueRandom" class="seg" role="radio">Random</button>
     </div>
-    <div class="row side-row">
-      <span id="sideStatus" class="hint"></span>
-      <button id="calibBtn" class="btn small">Calibrate sides</button>
-    </div>
 
     <button id="simBtn" class="btn sim" hidden>Simulate hit (Space)</button>
 
-    <!-- Live force meter for choosing the threshold -->
+    <section id="summary" class="card summary" hidden></section>
+
     <section class="card">
+      <div class="row"><span>Recent results</span></div>
+      <ol id="results" class="results"></ol>
+    </section>
+
+    <!-- Coach-only controls live in here, away from little fingers -->
+    <details class="card settings">
+      <summary>Settings</summary>
+
+      <h3>Kick sensitivity</h3>
       <div class="row">
         <span>Force</span>
         <span><b id="gNow">0.00</b> g &nbsp;·&nbsp; peak <b id="gPeak">0.00</b> g</span>
@@ -64,27 +70,32 @@
         <div id="meterFill" class="meter-fill"></div>
         <div id="meterThresh" class="meter-thresh" title="threshold"></div>
       </div>
-      <label class="sens">Kick sensitivity: hits count at <b><output id="thresholdOut"></output> g</b> and up
+      <label class="sens">Hits count at <b><output id="thresholdOut"></output> g</b> and up
         <input id="threshold" type="range" min="0.1" max="5" step="0.1">
       </label>
       <div class="row sens-row">
         <span class="hint">Lower = lighter kicks count</span>
         <button id="fromPeak" class="btn small">Set to 70% of peak</button>
       </div>
-    </section>
+      <p class="hint">Tap Start, have your lightest kicker kick the bag, then tap "Set to 70% of peak".</p>
 
-    <section id="summary" class="card summary" hidden></section>
-
-    <section class="card">
+      <h3>Side check</h3>
       <div class="row">
-        <span>Recent results</span>
-        <button id="copyLog" class="btn small">Copy log</button>
+        <span id="sideStatus" class="hint"></span>
+        <button id="calibBtn" class="btn small">Calibrate sides</button>
       </div>
-      <ol id="results" class="results"></ol>
-    </section>
+      <div class="btn-wrap">
+        <button id="clearCalib" class="btn small">Turn off side check</button>
+      </div>
 
-    <details class="card settings">
-      <summary>Settings</summary>
+      <h3>Logs</h3>
+      <div class="btn-wrap">
+        <button id="downloadLogs" class="btn small">Download logs</button>
+        <button id="copyLog" class="btn small">Copy log</button>
+        <button id="deleteLogs" class="btn small">Delete saved logs</button>
+      </div>
+
+      <h3>Timing</h3>
       <label>Ready time: <b><output id="countdownOut"></output> s</b>
         <input id="countdown" type="range" min="0" max="10" step="1">
       </label>
@@ -103,6 +114,8 @@
       <label>Rest between kicks (series): <b><output id="restOut"></output> s</b>
         <input id="rest" type="range" min="5" max="20" step="1">
       </label>
+
+      <h3>Sound and screen</h3>
       <label>Beep volume: <b><output id="volumeOut"></output>%</b>
         <input id="volume" type="range" min="10" max="100" step="5">
       </label>
@@ -110,9 +123,7 @@
         <input id="latency" type="range" min="-200" max="200" step="5">
       </label>
       <label class="check"><input id="flash" type="checkbox"> Flash screen on beep</label>
-      <button id="clearCalib" class="btn small update-check">Turn off side check</button>
       <button id="checkUpdate" class="btn small update-check">Check for update</button>
-      <p class="hint">Kick sensitivity is set in the Force card above. Have your lightest kicker kick the bag, then tap "Set to 70% of peak".</p>
     </details>
 
     <footer class="footer">v<span id="version"></span> · works offline once installed</footer>

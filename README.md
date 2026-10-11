@@ -51,7 +51,7 @@ On the iPhone:
 - **Mounted sideways (landscape)?** Either side up works, but the screen **must rotate**: turn off **Rotation Lock** (swipe down from the top-right corner). If the phone is on its side and the screen didn't turn, a red warning shows at the top after **Start**, because the arrow would point up/down instead of left/right. In landscape the arrow and the word LEFT/RIGHT sit side by side.
 - Coming from v1.2.0 or earlier, the home-screen app may still be locked to portrait. If it won't turn sideways with Rotation Lock off, remove it from the home screen and add it again from Safari.
 - Turn the volume up. The beep plays even with the silent switch on (iOS 17+).
-- **Set Kick sensitivity** (the slider in the **Force** card, default **0.6 g**; lower = lighter kicks count):
+- **Set Kick sensitivity** (Settings → **Kick sensitivity**, default **0.6 g**; lower = lighter kicks count):
   1. Tap **Clear peak**, then have your **lightest kicker** (e.g. an 8-year-old) kick the bag.
   2. Tap **Set to 70% of peak**. The slider moves to 70% of that kick's peak, so kicks that light or harder all count.
   3. Push the bag gently. If swaying alone turns the meter green, raise the slider a little.
@@ -67,13 +67,24 @@ On the iPhone:
 - **Series mode**: runs N reps (default 5). At the end, the main display shows **Fastest** and **Average** in large numbers, and the card below lists every kick. False starts, no-kicks and wrong-side kicks are left out of Fastest and Average. With side check on, it also shows **Correct side: 4 of 5**.
 - **Kick side** (the ◀ Left | Right ▶ | Random buttons under Single/Series, default **Right**): at the beep, the whole screen turns into a big blinking amber arrow with LEFT or RIGHT under it. It stays up until the kick lands or the timeout runs out. Left and right are as seen by the student **looking at the screen**. The arrow is hidden during READY, so in Random mode students can't guess the side early. Random never picks the same side more than 3 times in a row. The side is shown with each result, in the series list, and in the Copy log `side` column (blank for a false start, since no arrow had shown yet). Tap the arrow screen to stop (it covers the Stop button).
 - **Side check** (v1.3.0, round kicks): the app tells which side of the bag was kicked and checks it against the arrow.
-  1. With the phone in its holder, tap **Calibrate sides** (under the Left/Right/Random buttons).
+  1. With the phone in its holder, open Settings → **Side check** and tap **Calibrate sides**.
   2. The arrow shows RIGHT: kick the right side of the bag 3 times, waiting for the arrow each time. Then LEFT 3 times. A chirp confirms each kick.
   3. It shows how many of the 6 kicks it sorted correctly (aim for 6 of 6) and "Side check: **on**". The calibration is saved, and it still works if the phone is flipped over in the holder. Recalibrate if the holder or the bag changes.
   - After each kick: **✓ Right side** with a chirp, or **Wrong side!** in red with a buzz. A kick it can't call clearly shows "side unclear" and doesn't count either way.
   - Settings → **Turn off side check** clears the calibration.
   - Copy log adds `hit_side`, `side_score` (+1 = clearly right, −1 = clearly left), `push_x`, `push_y` and `screen_angle`, for tuning.
-- **Peak g and direction (°)**: shown for each hit. **Copy log** copies all reps as CSV. Side check uses the bag's push over the first 80 ms after impact (`push_x`, `push_y`), which is steadier than the single strongest reading (the °).
+- **Peak g and direction (°)**: shown for each hit. **Copy log** (Settings → Logs) copies all reps as CSV. Side check uses the bag's push over the first 80 ms after impact (`push_x`, `push_y`), which is steadier than the single strongest reading (the °).
+
+## Main screen and Settings (v1.4.1)
+The main screen only has what students need: the timer display, Start / Reset, Single / Series, Left / Right / Random, and Recent results. **Reset** needs a **press and hold for 1 second** (a red bar fills the button); a quick tap does nothing except show "hold 1 sec", so students can't clear the results by accident. Everything for the coach is in **Settings**, grouped as Kick sensitivity (force meter and slider), Side check (calibrate / turn off), Logs (download, copy, delete), Timing, and Sound and screen.
+
+## Saved logs (v1.4.0)
+- Every kick is saved on the phone automatically, grouped by **session**. A session starts when the app opens or **Reset** is tapped. Calibration kicks are saved too.
+- Each kick includes the detailed sensor readings from 0.2 s before impact to 0.4 s after (movement x/y/z and twist from the gyroscope), plus the arrow side, the side the app judged, and the settings.
+- **Download logs** (Settings → **Logs**, with a session and kick count) saves everything as one `kicktimer-logs-YYYYMMDD-HHMM.json` file. On the iPhone it opens the share sheet: **Save to Files**, AirDrop, or Mail.
+- Logs survive closing the app. About 3 MB is kept (thousands of kicks); the oldest sessions are dropped first.
+- Settings → **Delete saved logs** clears them (download first if you want to keep them).
+- **Copy log** still copies this session's summary as CSV.
 
 ## Accuracy notes
 - Safari reports motion about 60 times a second, so times are accurate to about ±17 ms. That's fine for kick reactions (about 200–600 ms).

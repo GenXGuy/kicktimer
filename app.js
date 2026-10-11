@@ -3,7 +3,7 @@
 // KickTimer: countdown -> random delay -> beep -> time until the bag is hit.
 // Runs entirely on the phone; see README.md for setup.
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.2';
 const G = 9.80665;           // m/s^2 per g
 const SETTLE_MS = 600;       // bag must stay below threshold this long before a rep
 const CAPTURE_MS = 120;      // after the first crossing, keep reading to find the peak
@@ -13,6 +13,10 @@ const MAX_SAME_SIDE = 3;      // Random side: never more than this many in a row
 const IMPULSE_MS = 80;       // side check: add up the bag's push over this long after impact
 const CALIB_KICKS = 3;       // side calibration: kicks per side
 const SIDE_MIN = 0.3;        // side check: a push weaker than this along the left/right line is unclear
+const RAW_PRE_MS = 200;      // detailed log: sensor readings kept from before each kick...
+const RAW_POST_MS = 400;     // ...and after it
+const LOGS_KEY = 'kicktimer.logs';
+const LOGS_MAX_CHARS = 3000000; // saved logs stay under ~3 MB; the oldest sessions are dropped
 
 // Bump when a default changes and phones should pick up the new value.
 const SETTINGS_VERSION = 2;
@@ -197,7 +201,7 @@ function scheduleBeep() {
 
 // ---------- motion sensor ----------
 
-const motion = { listening: false, lastEventAt: -1e9, frameMax: 0, peak: 0, lastAbove: -1e9, hz: 0, _count: 0, gx: 0, gy: 0, gz: 0 };
+const motion = { listening: false, lastEventAt: -1e9, frameMax: 0, peak: 0, lastAbove: -1e9, hz: 0, _count: 0, gx: 0, gy: 0, gz: 0, ring: [], recording: null };
 
 function startMotion() {
   // Must be called synchronously from a tap on iOS.
@@ -246,7 +250,30 @@ function onMotion(e) {
   }
   motion.lastEventAt = performance.now();
   motion._count++;
-  handleSample({ t: eventTime(e), g, x, y, z, sim: false });
+  const rr = e.rotationRate || {};
+  const s = { t: eventTime(e), g, x, y, z, ra: rr.alpha || 0, rb: rr.beta || 0, rg: rr.gamma || 0, sim: false };
+  recordRaw(s);
+  handleSample(s);
+}
+
+// Detailed log: keep the last moment of readings, and while a kick is being
+// recorded, keep adding to it until RAW_POST_MS after impact.
+function recordRaw(s) {
+  const ring = motion.ring;
+  ring.push(s);
+  while (ring.length && ring[0].t < s.t - RAW_PRE_MS - 50) ring.shift();
+  const rec = motion.recording;
+  if (rec) {
+    if (s.t <= rec.until) { if (rec.arr[rec.arr.length - 1] !== s) rec.arr.push(s); }
+    else motion.recording = null;
+  }
+}
+
+function startRawRecording(s) {
+  const arr = motion.ring.filter((p) => p.t >= s.t - RAW_PRE_MS);
+  if (arr[arr.length - 1] !== s) arr.push(s); // simulated hits aren't in the ring
+  motion.recording = { arr, until: s.t + RAW_POST_MS };
+  return arr;
 }
 
 function handleSample(s) {
@@ -426,9 +453,10 @@ function beginCapture(s) {
   drill.hitT = s.t;
   drill.peak = s;
   drill.imp = [s.x, s.y];
+  const samples = startRawRecording(s);
   later(CAPTURE_MS, () => {
     const push = toScreen(drill.imp[0], drill.imp[1]);
-    if (calib) { calibKick(push); return; }
+    if (calib) { calibKick(push, samples, s.t); return; }
     const p = drill.peak;
     const angle = (Math.atan2(p.y, p.x) * 180 / Math.PI + 360) % 360;
     const judged = judgeSide(push);
@@ -436,6 +464,7 @@ function beginCapture(s) {
       kind: 'hit', ms: drill.hitT - drill.beepT,
       peakG: p.g, x: p.x, y: p.y, z: p.z, angle, sim: s.sim,
       hitSide: judged.side, sideScore: judged.score, push, screenAngle: screenAngle(),
+      samples, hitT: s.t,
     });
   });
 }
@@ -455,6 +484,7 @@ function finishRep(r) {
   r.mode = drill.series ? 'series' : 'single';
   r.when = new Date();
   addResult(r);
+  logEvent('rep', r);
 
   if (r.kind === 'hit') {
     const extra = `peak ${r.peakG.toFixed(1)} g · dir ${Math.round(r.angle)}°${r.sim ? ' · simulated' : ''}`;
@@ -553,6 +583,7 @@ function showSeriesDisplay(list) {
 
 function resetAll() {
   stopDrill('Tap Start');
+  newSession(); // Reset starts a new session in the saved logs
   el.big.textContent = '0.000';
   results = [];
   log = [];
@@ -681,10 +712,11 @@ function calibStep() {
   });
 }
 
-function calibKick(push) {
+function calibKick(push, samples, hitT) {
   const c = drill.calib;
   const n = Math.hypot(push[0], push[1]) || 1;
   c.kicks.push({ side: c.steps[c.i], v: [push[0] / n, push[1] / n] });
+  logEvent('calibKick', { side: c.steps[c.i], kick: c.i + 1, push, screenAngle: screenAngle(), samples, hitT });
   resultSound(true);
   c.i++;
   if (c.i < c.steps.length) calibStep();
@@ -701,6 +733,7 @@ function finishCalibration(kicks) {
   const n = Math.hypot(d[0], d[1]);
   stopDrill('');
   if (n < 0.5) {
+    logEvent('calibDone', { ok: false, kicks: kicks.length });
     show('bad', 'Calibration failed', 'TRY AGAIN', 'Right and left kicks moved the bag the same way. Kick firmly on each side.');
     return;
   }
@@ -708,8 +741,143 @@ function finishCalibration(kicks) {
   saveSettings();
   paintSideStatus();
   const ok = kicks.filter((k) => judgeSide(k.v).side === k.side).length;
+  logEvent('calibDone', { ok: true, sorted: ok, kicks: kicks.length, sideAxis: settings.sideAxis });
   show(ok === kicks.length ? 'good' : 'bad', 'Side check on', `${ok} of ${kicks.length}`,
     ok === kicks.length ? 'Every calibration kick was sorted to the right side' : 'Some kicks were unclear. Calibrate again for better results.');
+}
+
+// ---------- hold to reset ----------
+// Reset needs a press and hold, so a stray tap from a student can't wipe the results.
+
+const HOLD_MS = 1000;
+
+function bindHoldToReset() {
+  const btn = el.reset;
+  const hint = $('resetHint');
+  let timer = null;
+  let hintTimer = null;
+  btn.style.setProperty('--hold-ms', HOLD_MS + 'ms');
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+    btn.classList.remove('holding');
+  };
+  btn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    cancel();
+    btn.classList.add('holding');
+    timer = setTimeout(() => { cancel(); resetAll(); }, HOLD_MS);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => btn.addEventListener(t, () => {
+    if (!timer) return;
+    cancel();
+    // let go too soon: say how it works
+    hint.textContent = 'hold 1 sec';
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => { hint.textContent = 'hold'; }, 1500);
+  }));
+  btn.addEventListener('contextmenu', (e) => e.preventDefault()); // long press menu on some phones
+}
+
+// ---------- saved session logs ----------
+// Every rep and calibration kick, with the raw sensor readings around it, is kept
+// on the phone per session. "Download logs" saves them all as one JSON file.
+
+let session = null;
+let saveTimer = null;
+
+function newSession() {
+  saveLogs();
+  session = {
+    id: Date.now(), started: new Date().toISOString(), version: VERSION,
+    device: navigator.userAgent, screen: `${screen.width}x${screen.height}`, events: [],
+  };
+}
+
+function logEvent(type, data) {
+  session.events.push({ type, when: new Date().toISOString(), threshold: settings.threshold, cueMode: settings.cue, sideAxis: settings.sideAxis, data });
+  // wait for the readings after the kick to finish coming in, then save
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveLogs, RAW_POST_MS + 200);
+  paintLogsLink();
+}
+
+const r2 = (v) => Math.round(v * 100) / 100;
+
+// Samples: [ms from impact, accel x, y, z (m/s²), rotation alpha, beta, gamma (°/s)]
+function packEvent(e) {
+  const { samples, hitT, when, ...rest } = e.data;
+  const out = { type: e.type, when: e.when, threshold: e.threshold, cueMode: e.cueMode, sideAxis: e.sideAxis, ...rest };
+  if (when instanceof Date) out.repTime = when.toISOString();
+  if (out.push) out.push = out.push.map(r2);
+  ['ms', 'peakG', 'x', 'y', 'z', 'angle', 'sideScore'].forEach((k) => { if (typeof out[k] === 'number') out[k] = r2(out[k]); });
+  if (samples) out.samples = samples.map((p) => [Math.round(p.t - hitT), r2(p.x), r2(p.y), r2(p.z), r2(p.ra || 0), r2(p.rb || 0), r2(p.rg || 0)]);
+  return out;
+}
+
+function loadLogs() {
+  try { return JSON.parse(localStorage.getItem(LOGS_KEY) || '[]'); } catch (e) { return []; }
+}
+
+function allSessions() {
+  const saved = loadLogs().filter((x) => !session || x.id !== session.id);
+  if (session && session.events.length) saved.push({ ...session, events: session.events.map(packEvent) });
+  return saved;
+}
+
+function saveLogs() {
+  if (!session || !session.events.length) return;
+  const sessions = allSessions();
+  let text = JSON.stringify(sessions);
+  while (sessions.length > 1 && text.length > LOGS_MAX_CHARS) { sessions.shift(); text = JSON.stringify(sessions); }
+  for (;;) {
+    try { localStorage.setItem(LOGS_KEY, text); return; } catch (e) {
+      if (sessions.length <= 1) return; // storage full or blocked: keep it in memory only
+      sessions.shift();
+      text = JSON.stringify(sessions);
+    }
+  }
+}
+
+function paintLogsLink() {
+  const sessions = allSessions();
+  const kicks = sessions.reduce((a, x) => a + x.events.filter((e) => e.type === 'rep').length, 0);
+  $('downloadLogs').textContent = sessions.length
+    ? `Download logs (${sessions.length} session${sessions.length === 1 ? '' : 's'}, ${kicks} kick${kicks === 1 ? '' : 's'})`
+    : 'Download logs';
+}
+
+async function downloadLogs(ev) {
+  ev.preventDefault();
+  saveLogs();
+  const sessions = allSessions();
+  if (!sessions.length) { alert('Nothing logged yet. Run a drill first.'); return; }
+  const d = new Date();
+  const p2 = (n) => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`; // phone's local time
+  const name = `kicktimer-logs-${stamp}.json`;
+  const text = JSON.stringify({ app: 'KickTimer', version: VERSION, exported: new Date().toISOString(), sessions });
+  const file = new File([text], name, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'KickTimer logs' }); return; } catch (e) {
+      if (e.name === 'AbortError') return; // closed the share sheet
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function deleteLogs() {
+  if (!confirm('Delete all saved logs on this phone? Download them first if you want to keep them.')) return;
+  try { localStorage.removeItem(LOGS_KEY); } catch (e) { /* blocked */ }
+  session.events = [];
+  paintLogsLink();
 }
 
 // ---------- live meter + sensor badge ----------
@@ -759,7 +927,7 @@ function frame(now) {
 // ---------- wiring ----------
 
 el.start.addEventListener('click', onStartTap);
-el.reset.addEventListener('click', resetAll);
+bindHoldToReset();
 el.sim.addEventListener('click', simulateHit);
 el.peakReset.addEventListener('click', () => { motion.peak = 0; });
 $('fromPeak').addEventListener('click', () => {
@@ -781,6 +949,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (running()) stopDrill('Stopped (app was hidden)');
+    saveLogs();
   } else {
     keepAwake();
     checkForUpdate(); // iOS often resumes the app instead of restarting it
@@ -788,6 +957,11 @@ document.addEventListener('visibilitychange', () => {
 });
 
 $('version').textContent = VERSION;
+newSession();
+paintLogsLink();
+$('downloadLogs').addEventListener('click', downloadLogs);
+$('deleteLogs').addEventListener('click', deleteLogs);
+window.addEventListener('pagehide', saveLogs);
 bindSettings();
 renderResults();
 requestAnimationFrame(frame);

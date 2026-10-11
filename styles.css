@@ -86,13 +86,21 @@ html, body {
 .btn.small { font-size: 13px; padding: 6px 10px; border-radius: 10px; }
 .btn.sim { border-style: dashed; color: var(--accent); }
 
+/* Reset: press and hold; the red bar fills while held */
+.btn.hold { position: relative; overflow: hidden; touch-action: manipulation; -webkit-touch-callout: none; }
+.btn.hold > span { position: relative; z-index: 1; }
+.btn.hold small { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 2px; }
+.btn.hold::after { content: ''; position: absolute; inset: 0; background: var(--bad); transform: scaleX(0); transform-origin: left; }
+.btn.hold.holding::after { transform: scaleX(1); transition: transform var(--hold-ms, 1s) linear; }
+.btn.hold.holding small { color: var(--text); }
+.btn.hold:active { transform: none; }
+
 .segmented { display: grid; grid-template-columns: 1fr 1fr; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
 .seg { font: inherit; font-size: 16px; font-weight: 600; background: none; border: 0; color: var(--muted); padding: 10px; border-radius: 10px; cursor: pointer; }
 .seg.on { background: var(--line); color: var(--text); }
 .segmented.three { grid-template-columns: 1fr 1fr 1fr; }
-.side-row { margin-top: -4px; padding: 0 4px; }
-.side-row .hint { margin: 0; }
-.side-row .on { color: var(--go); font-weight: 700; }
+#sideStatus { margin: 0; }
+#sideStatus .on { color: var(--go); font-weight: 700; }
 
 /* Kick-side cue: covers the whole screen so it can be seen from the kicking spot */
 .cue {
@@ -180,3 +188,6 @@ html, body {
 .footer { text-align: center; color: var(--muted); font-size: 12px; }
 .btn.update { color: #000; background: var(--accent); border-color: var(--accent); font-size: 15px; padding: 10px 14px; }
 .update-check { margin-top: 16px; }
+.settings h3 { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.settings > .row { margin-top: 10px; }
+.btn-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
