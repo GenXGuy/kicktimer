@@ -12,6 +12,7 @@ It's a web app: it runs in iPhone Safari, installs to the home screen, and **wor
 | `app.js` | All logic: ready/delay, beep, sensor, timing, settings |
 | `sw.js` | Offline cache (service worker) |
 | `manifest.webmanifest`, `icon-*.png` | Home-screen app name and icon |
+| `voice/` (16 .wav files) | "Right!" / "Left!" voice clips: 2 voices x 4 speeds. Upload the whole folder (drag it onto the GitHub upload page). |
 | `.claude/launch.json` | Local test server for the PC |
 
 ## Test on the PC
@@ -62,7 +63,7 @@ On the iPhone:
 - **0.312 s**: reaction time from beep to hit.
 - **FALSE START**: the bag was hit while READY was showing (before the beep).
 - **Ready time** (Settings): how long READY shows before the random delay starts, on every rep. The beep is the only sound.
-- **Rest between kicks** (Settings, series only): at least 5 s, default 5. The last time stays on screen with "Rest · next kick in 5…" while the student gets back into stance, then READY starts again.
+- **Rest between kicks** (Settings, series only): 1 to 20 s, default 3 (was at least 5 s before v1.4.3; phones still on the old 5 s default switch to 3 s). The last time stays on screen with "Rest · next kick in 3…" while the student gets back into stance, then READY starts again.
 - **NO KICK**: nothing above X within the timeout.
 - **Series mode**: runs N reps (default 5). At the end, the main display shows **Fastest** and **Average** in large numbers, and the card below lists every kick. False starts, no-kicks and wrong-side kicks are left out of Fastest and Average. With side check on, it also shows **Correct side: 4 of 5**.
 - **Kick side** (the ◀ Left | Right ▶ | Random buttons under Single/Series, default **Right**): at the beep, the whole screen turns into a big blinking amber arrow with LEFT or RIGHT under it. It stays up until the kick lands or the timeout runs out. Left and right are as seen by the student **looking at the screen**. The arrow is hidden during READY, so in Random mode students can't guess the side early. Random never picks the same side more than 3 times in a row. The side is shown with each result, in the series list, and in the Copy log `side` column (blank for a false start, since no arrow had shown yet). Tap the arrow screen to stop (it covers the Stop button).
@@ -74,6 +75,13 @@ On the iPhone:
   - Settings → **Turn off side check** clears the calibration.
   - Copy log adds `hit_side`, `side_score` (+1 = clearly right, −1 = clearly left), `push_x`, `push_y` and `screen_angle`, for tuning.
 - **Peak g and direction (°)**: shown for each hit. **Copy log** (Settings → Logs) copies all reps as CSV. Side check uses the bag's push over the first 80 ms after impact (`push_x`, `push_y`), which is steadier than the single strongest reading (the °).
+
+## Voice cue (v1.5.0)
+- Settings -> Sound and screen -> **Voice**: when on, the phone says **"Right!"** or **"Left!"** instead of the beep, at the same moment the arrow appears. Off = the beep, as before.
+- **Voice**: Male (David) or Female (Zira). **Speed**: 1x, 1.25x, 1.5x (default), 1.75x. Faster speeds are re-spoken faster, not sped-up recordings, so the pitch stays normal.
+- **Test voice** plays "Right" then "Left" so you can hear it before a drill.
+- Timing starts when the word starts (the clips have no silence in front), the same for every student. Times with the voice aren't directly comparable to times with the beep, so use one or the other when comparing.
+- The clips were made with the built-in Windows voices (System.Speech), trimmed and made loud. If the voice folder is missing, the app falls back to the beep.
 
 ## Main screen and Settings (v1.4.1)
 The main screen only has what students need: the timer display, Start / Reset, Single / Series, Left / Right / Random, and Recent results. **Reset** needs a **press and hold for 1 second** (a red bar fills the button); a quick tap does nothing except show "hold 1 sec", so students can't clear the results by accident. Everything for the coach is in **Settings**, grouped as Kick sensitivity (force meter and slider), Side check (calibrate / turn off), Logs (download, copy, delete), Timing, and Sound and screen.
@@ -91,4 +99,6 @@ The main screen only has what students need: the timer display, Start / Reset, S
 - **Latency offset** (Settings) shifts every time by a fixed number of ms if you want to correct for speaker delay. It applies equally to everyone, so comparisons stay fair.
 
 ## Future ideas
-- Voice cue "Right!" / "Left!" in place of the beep (the full-screen arrow cue was added in v1.2.0).
+- Kick power on the main screen: big peak g for each kick plus the session best ("hardest kick" game). Same bag only for comparing.
+- Timed kick count: "race to 10 kicks" (time it) or "most kicks in 10 s" (count them). Needs each fast kick counted separately.
+- Two-person face-off: two students on opposite sides of the bag, both right-leg round kicks, so they push the bag opposite ways. The first jolt decides who hit first (calibrate Player 1 x3, Player 2 x3; beep start; ties within ~20 ms; running score).

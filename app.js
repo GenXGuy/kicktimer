@@ -3,7 +3,7 @@
 // KickTimer: countdown -> random delay -> beep -> time until the bag is hit.
 // Runs entirely on the phone; see README.md for setup.
 
-const VERSION = '1.4.2';
+const VERSION = '1.5.0';
 const G = 9.80665;           // m/s^2 per g
 const SETTLE_MS = 600;       // bag must stay below threshold this long before a rep
 const CAPTURE_MS = 120;      // after the first crossing, keep reading to find the peak
@@ -19,11 +19,12 @@ const LOGS_KEY = 'kicktimer.logs';
 const LOGS_MAX_CHARS = 3000000; // saved logs stay under ~3 MB; the oldest sessions are dropped
 
 // Bump when a default changes and phones should pick up the new value.
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 
 const DEFAULTS = {
   threshold: 0.6, countdown: 3, delayMin: 1, delayMax: 3, timeout: 3,
-  reps: 5, rest: 5, volume: 80, latency: 0, flash: true, mode: 'single', cue: 'right', sideAxis: null,
+  reps: 5, rest: 3, volume: 80, latency: 0, flash: true, mode: 'single', cue: 'right', sideAxis: null,
+  voice: false, voiceName: 'david', voiceSpeed: 150,
 };
 
 // ---------- settings ----------
@@ -35,6 +36,8 @@ function loadSettings() {
     const saved = JSON.parse(localStorage.getItem('kicktimer.settings') || '{}');
     // v1 defaulted to 2.0 g, far too hard for young kids: replace it with the new default.
     if (!saved.v || saved.v < 2) delete saved.threshold;
+    // v3 lowered the rest minimum to 1 s: a phone still on the old 5 s default gets the new 3 s.
+    if ((!saved.v || saved.v < 3) && saved.rest === 5) delete saved.rest;
     return { ...DEFAULTS, ...saved, v: SETTINGS_VERSION };
   } catch (e) {
     return { ...DEFAULTS };
@@ -149,6 +152,7 @@ function startAudio() {
     src.connect(audio.destination);
     src.start(0);
   }
+  loadVoice();
   return audio.state === 'running' ? Promise.resolve() : audio.resume().catch(() => {});
 }
 
@@ -179,14 +183,67 @@ function resultSound(good) {
   }
 }
 
-// Schedules the beep and returns the performance.now() time at which it
-// actually comes out of the speaker (plus the user's latency offset).
-function scheduleBeep() {
+// ---------- voice cue ----------
+// Short "Right!" / "Left!" clips (voice/<name>-<side>-<speed>.wav), trimmed so the
+// word starts at the first sample. They play through Web Audio like the beep, so
+// they start at the scheduled moment and the timing stays the same for everyone.
+
+const voiceBuffers = {}; // 'david-right-150' -> AudioBuffer, or 'loading'
+const voiceKey = (side) => `${settings.voiceName}-${side}-${settings.voiceSpeed}`;
+
+function loadVoice() {
+  if (!audio || !settings.voice) return;
+  ['right', 'left'].forEach((side) => {
+    const key = voiceKey(side);
+    if (voiceBuffers[key]) return;
+    voiceBuffers[key] = 'loading';
+    fetch(`voice/${key}.wav`)
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then((data) => new Promise((ok, fail) => audio.decodeAudioData(data, ok, fail)))
+      .then((buf) => { voiceBuffers[key] = buf; })
+      .catch(() => { delete voiceBuffers[key]; }); // falls back to the beep
+  });
+}
+
+function voiceBuffer(side) {
+  const buf = settings.voice && side && voiceBuffers[voiceKey(side)];
+  return buf && buf !== 'loading' ? buf : null;
+}
+
+function playBuffer(buf, at) {
+  const src = audio.createBufferSource();
+  const gain = audio.createGain();
+  src.buffer = buf;
+  gain.gain.value = settings.volume / 100;
+  src.connect(gain).connect(audio.destination);
+  src.start(at);
+}
+
+function testVoice() {
+  if (!settings.voice) { alert('Turn on Voice first.'); return; }
+  startAudio().then(() => {
+    let tries = 0;
+    const play = () => {
+      const r = voiceBuffer('right'), l = voiceBuffer('left');
+      if ((!r || !l) && tries++ < 40) { setTimeout(play, 50); return; }
+      if (!r || !l) { alert('The voice files did not load. Check that the voice folder was uploaded.'); return; }
+      playBuffer(r, audio.currentTime + 0.05);
+      playBuffer(l, audio.currentTime + 1.05);
+    };
+    play();
+  });
+}
+
+// Schedules the beep (or the voice for that side) and returns the performance.now()
+// time at which it actually comes out of the speaker (plus the user's latency offset).
+function scheduleBeep(side) {
   const now = performance.now();
   if (!audio) return now + settings.latency;
   const lead = 0.03;
   const at = audio.currentTime + lead;
-  tone(1200, 0.2, 0.6 * settings.volume / 100, 'square', at);
+  const voice = voiceBuffer(side);
+  if (voice) playBuffer(voice, at);
+  else tone(1200, 0.2, 0.6 * settings.volume / 100, 'square', at);
 
   let perfAt = null;
   if (audio.getOutputTimestamp) {
@@ -431,7 +488,7 @@ function waitPhase(repLabel) {
 
 function fireBeep() {
   drill.side = pickSide();
-  drill.beepT = scheduleBeep();
+  drill.beepT = scheduleBeep(drill.side);
   drill.state = 'armed';
   const now = performance.now();
   const soundAt = drill.beepT - settings.latency;
@@ -506,7 +563,7 @@ function finishRep(r) {
   if (s) {
     s.list.push(r);
     if (s.list.length < s.total) {
-      restCountdown(Math.max(5, settings.rest));
+      restCountdown(Math.max(1, settings.rest));
       return;
     }
     const list = s.list;
@@ -651,10 +708,19 @@ function bindSettings() {
       saveSettings();
     });
   });
-  ['flash'].forEach((key) => {
+  ['flash', 'voice'].forEach((key) => {
     const input = $(key);
     input.checked = !!settings[key];
-    input.addEventListener('change', () => { settings[key] = input.checked; saveSettings(); });
+    input.addEventListener('change', () => { settings[key] = input.checked; saveSettings(); loadVoice(); });
+  });
+  ['voiceName', 'voiceSpeed'].forEach((key) => {
+    const input = $(key);
+    input.value = String(settings[key]);
+    input.addEventListener('change', () => {
+      settings[key] = key === 'voiceSpeed' ? Number(input.value) : input.value;
+      saveSettings();
+      loadVoice();
+    });
   });
   const paintMode = () => {
     el.modeSingle.classList.toggle('on', settings.mode === 'single');
@@ -938,6 +1004,7 @@ $('fromPeak').addEventListener('click', () => {
 });
 el.copyLog.addEventListener('click', copyLog);
 $('calibBtn').addEventListener('click', onCalibTap);
+$('testVoice').addEventListener('click', testVoice);
 $('clearCalib').addEventListener('click', () => { settings.sideAxis = null; saveSettings(); paintSideStatus(); });
 // Tap the full-screen arrow to stop (it covers the Stop button)
 el.cue.addEventListener('click', () => { if (running()) stopDrill(drill.calib ? 'Calibration cancelled' : 'Stopped'); });
