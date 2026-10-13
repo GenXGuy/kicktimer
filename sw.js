@@ -1,5 +1,5 @@
 ﻿// Offline cache for KickTimer. Bump CACHE on every release so phones pick up the new files.
-const CACHE = 'kicktimer-v1.5.0';
+const CACHE = 'kicktimer-v1.5.1';
 const FILES = [
   './',
   'index.html',
@@ -11,22 +11,8 @@ const FILES = [
 ];
 // Voice clips are cached too, but one that's missing must not block the update.
 const VOICE = [
-  'voice/david-right-100.wav',
-  'voice/david-right-125.wav',
-  'voice/david-right-150.wav',
-  'voice/david-right-175.wav',
-  'voice/david-left-100.wav',
-  'voice/david-left-125.wav',
-  'voice/david-left-150.wav',
-  'voice/david-left-175.wav',
-  'voice/zira-right-100.wav',
-  'voice/zira-right-125.wav',
-  'voice/zira-right-150.wav',
-  'voice/zira-right-175.wav',
-  'voice/zira-left-100.wav',
-  'voice/zira-left-125.wav',
-  'voice/zira-left-150.wav',
-  'voice/zira-left-175.wav',
+  'voice/right.wav',
+  'voice/left.wav',
 ];
 
 self.addEventListener('install', (e) => {

@@ -3,12 +3,13 @@
 // KickTimer: countdown -> random delay -> beep -> time until the bag is hit.
 // Runs entirely on the phone; see README.md for setup.
 
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const G = 9.80665;           // m/s^2 per g
 const SETTLE_MS = 600;       // bag must stay below threshold this long before a rep
 const CAPTURE_MS = 120;      // after the first crossing, keep reading to find the peak
 const SERIES_GAP_MS = 1500;  // at series end, show the last rep before the fastest/average screen
 const MAX_LIST = 50;
+const VOLUME = 1;            // full; the phone's volume buttons set the loudness
 const MAX_SAME_SIDE = 3;      // Random side: never more than this many in a row
 const IMPULSE_MS = 80;       // side check: add up the bag's push over this long after impact
 const CALIB_KICKS = 3;       // side calibration: kicks per side
@@ -23,8 +24,8 @@ const SETTINGS_VERSION = 3;
 
 const DEFAULTS = {
   threshold: 0.6, countdown: 3, delayMin: 1, delayMax: 3, timeout: 3,
-  reps: 5, rest: 3, volume: 80, latency: 0, flash: true, mode: 'single', cue: 'right', sideAxis: null,
-  voice: false, voiceName: 'david', voiceSpeed: 150,
+  reps: 5, rest: 3, flash: true, mode: 'single', cue: 'right', sideAxis: null,
+  voice: false,
 };
 
 // ---------- settings ----------
@@ -173,7 +174,7 @@ function tone(freq, durSec, vol, type, at) {
 // Game feedback after each kick: a rising chirp for the right side, a low buzz for the wrong side.
 function resultSound(good) {
   if (!audio) return;
-  const v = 0.5 * settings.volume / 100;
+  const v = 0.5 * VOLUME;
   const at = audio.currentTime + 0.02;
   if (good) {
     tone(880, 0.09, v, 'triangle', at);
@@ -184,17 +185,15 @@ function resultSound(good) {
 }
 
 // ---------- voice cue ----------
-// Short "Right!" / "Left!" clips (voice/<name>-<side>-<speed>.wav), trimmed so the
+// Short "Right!" / "Left!" clips (voice/right.wav, voice/left.wav: Windows "David" at 1.25x), trimmed so the
 // word starts at the first sample. They play through Web Audio like the beep, so
 // they start at the scheduled moment and the timing stays the same for everyone.
 
-const voiceBuffers = {}; // 'david-right-150' -> AudioBuffer, or 'loading'
-const voiceKey = (side) => `${settings.voiceName}-${side}-${settings.voiceSpeed}`;
+const voiceBuffers = {}; // 'right' -> AudioBuffer, or 'loading'
 
 function loadVoice() {
   if (!audio || !settings.voice) return;
-  ['right', 'left'].forEach((side) => {
-    const key = voiceKey(side);
+  ['right', 'left'].forEach((key) => {
     if (voiceBuffers[key]) return;
     voiceBuffers[key] = 'loading';
     fetch(`voice/${key}.wav`)
@@ -206,7 +205,7 @@ function loadVoice() {
 }
 
 function voiceBuffer(side) {
-  const buf = settings.voice && side && voiceBuffers[voiceKey(side)];
+  const buf = settings.voice && side && voiceBuffers[side];
   return buf && buf !== 'loading' ? buf : null;
 }
 
@@ -214,36 +213,21 @@ function playBuffer(buf, at) {
   const src = audio.createBufferSource();
   const gain = audio.createGain();
   src.buffer = buf;
-  gain.gain.value = settings.volume / 100;
+  gain.gain.value = VOLUME;
   src.connect(gain).connect(audio.destination);
   src.start(at);
 }
 
-function testVoice() {
-  if (!settings.voice) { alert('Turn on Voice first.'); return; }
-  startAudio().then(() => {
-    let tries = 0;
-    const play = () => {
-      const r = voiceBuffer('right'), l = voiceBuffer('left');
-      if ((!r || !l) && tries++ < 40) { setTimeout(play, 50); return; }
-      if (!r || !l) { alert('The voice files did not load. Check that the voice folder was uploaded.'); return; }
-      playBuffer(r, audio.currentTime + 0.05);
-      playBuffer(l, audio.currentTime + 1.05);
-    };
-    play();
-  });
-}
-
 // Schedules the beep (or the voice for that side) and returns the performance.now()
-// time at which it actually comes out of the speaker (plus the user's latency offset).
+// time at which it actually comes out of the speaker.
 function scheduleBeep(side) {
   const now = performance.now();
-  if (!audio) return now + settings.latency;
+  if (!audio) return now;
   const lead = 0.03;
   const at = audio.currentTime + lead;
   const voice = voiceBuffer(side);
   if (voice) playBuffer(voice, at);
-  else tone(1200, 0.2, 0.6 * settings.volume / 100, 'square', at);
+  else tone(1200, 0.2, 0.6 * VOLUME, 'square', at);
 
   let perfAt = null;
   if (audio.getOutputTimestamp) {
@@ -253,7 +237,7 @@ function scheduleBeep(side) {
   if (perfAt === null || Math.abs(perfAt - now) > 1000) {
     perfAt = now + lead * 1000 + ((audio.outputLatency || audio.baseLatency || 0) * 1000);
   }
-  return perfAt + settings.latency;
+  return perfAt;
 }
 
 // ---------- motion sensor ----------
@@ -491,7 +475,7 @@ function fireBeep() {
   drill.beepT = scheduleBeep(drill.side);
   drill.state = 'armed';
   const now = performance.now();
-  const soundAt = drill.beepT - settings.latency;
+  const soundAt = drill.beepT;
   later(soundAt - now, () => {
     if (drill.state !== 'armed') return;
     show(settings.flash ? 'armed flash' : 'armed', `Kick ${sideName(drill.side).toLowerCase()}!`, 'GO', '');
@@ -554,9 +538,9 @@ function finishRep(r) {
       if (r.correct) resultSound(true);
     }
   } else if (r.kind === 'false') {
-    show('bad', 'Too early', 'FALSE START', 'Kicked before the beep');
+    show('bad word', 'Too early', 'FALSE START', 'Kicked before the beep');
   } else {
-    show('bad', 'Timed out', 'NO KICK', `${sideName(r.side)} · nothing above ${settings.threshold.toFixed(1)} g in ${settings.timeout} s`);
+    show('bad word', 'Timed out', 'NO KICK', `${sideName(r.side)} · nothing above ${settings.threshold.toFixed(1)} g in ${settings.timeout} s`);
   }
 
   const s = drill.series;
@@ -687,7 +671,7 @@ function fallbackCopy(text, done) {
 
 // ---------- settings UI ----------
 
-const RANGE_KEYS = ['threshold', 'countdown', 'delayMin', 'delayMax', 'timeout', 'reps', 'rest', 'volume', 'latency'];
+const RANGE_KEYS = ['threshold', 'countdown', 'delayMin', 'delayMax', 'timeout', 'reps', 'rest'];
 
 function bindSettings() {
   RANGE_KEYS.forEach((key) => {
@@ -712,15 +696,6 @@ function bindSettings() {
     const input = $(key);
     input.checked = !!settings[key];
     input.addEventListener('change', () => { settings[key] = input.checked; saveSettings(); loadVoice(); });
-  });
-  ['voiceName', 'voiceSpeed'].forEach((key) => {
-    const input = $(key);
-    input.value = String(settings[key]);
-    input.addEventListener('change', () => {
-      settings[key] = key === 'voiceSpeed' ? Number(input.value) : input.value;
-      saveSettings();
-      loadVoice();
-    });
   });
   const paintMode = () => {
     el.modeSingle.classList.toggle('on', settings.mode === 'single');
@@ -771,7 +746,7 @@ function calibStep() {
   drill.state = 'calibSettle';
   updateStartButton();
   hideCue();
-  show('waiting', 'Calibrating sides', 'Hold still', `Kick ${c.i + 1} of ${c.steps.length}`);
+  show('waiting word', 'Calibrating sides', 'Hold still', `Kick ${c.i + 1} of ${c.steps.length}`);
   whenSettled(() => {
     drill.state = 'calib';
     showCue(side, false, `Calibrating · ${sideName(side)} kick ${n} of ${CALIB_KICKS} · tap screen to cancel`);
@@ -800,7 +775,7 @@ function finishCalibration(kicks) {
   stopDrill('');
   if (n < 0.5) {
     logEvent('calibDone', { ok: false, kicks: kicks.length });
-    show('bad', 'Calibration failed', 'TRY AGAIN', 'Right and left kicks moved the bag the same way. Kick firmly on each side.');
+    show('bad word', 'Calibration failed', 'TRY AGAIN', 'Right and left kicks moved the bag the same way. Kick firmly on each side.');
     return;
   }
   settings.sideAxis = [d[0] / n, d[1] / n];
@@ -1004,7 +979,6 @@ $('fromPeak').addEventListener('click', () => {
 });
 el.copyLog.addEventListener('click', copyLog);
 $('calibBtn').addEventListener('click', onCalibTap);
-$('testVoice').addEventListener('click', testVoice);
 $('clearCalib').addEventListener('click', () => { settings.sideAxis = null; saveSettings(); paintSideStatus(); });
 // Tap the full-screen arrow to stop (it covers the Stop button)
 el.cue.addEventListener('click', () => { if (running()) stopDrill(drill.calib ? 'Calibration cancelled' : 'Stopped'); });

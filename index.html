@@ -117,29 +117,6 @@
 
       <h3>Sound and screen</h3>
       <label class="check"><input id="voice" type="checkbox"> Voice: say "Right" / "Left" instead of the beep</label>
-      <div class="voice-opts">
-        <label>Voice
-          <select id="voiceName">
-            <option value="david">Male (David)</option>
-            <option value="zira">Female (Zira)</option>
-          </select>
-        </label>
-        <label>Speed
-          <select id="voiceSpeed">
-            <option value="100">1×</option>
-            <option value="125">1.25×</option>
-            <option value="150">1.5×</option>
-            <option value="175">1.75×</option>
-          </select>
-        </label>
-        <button id="testVoice" class="btn small">Test voice</button>
-      </div>
-      <label>Volume: <b><output id="volumeOut"></output>%</b>
-        <input id="volume" type="range" min="10" max="100" step="5">
-      </label>
-      <label>Latency offset: <b><output id="latencyOut"></output> ms</b>
-        <input id="latency" type="range" min="-200" max="200" step="5">
-      </label>
       <label class="check"><input id="flash" type="checkbox"> Flash screen on beep</label>
       <button id="checkUpdate" class="btn small update-check">Check for update</button>
     </details>

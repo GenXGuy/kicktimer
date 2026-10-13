@@ -12,7 +12,7 @@ It's a web app: it runs in iPhone Safari, installs to the home screen, and **wor
 | `app.js` | All logic: ready/delay, beep, sensor, timing, settings |
 | `sw.js` | Offline cache (service worker) |
 | `manifest.webmanifest`, `icon-*.png` | Home-screen app name and icon |
-| `voice/` (16 .wav files) | "Right!" / "Left!" voice clips: 2 voices x 4 speeds. Upload the whole folder (drag it onto the GitHub upload page). |
+| `voice/right.wav`, `voice/left.wav` | "Right!" / "Left!" voice clips (male voice, 1.25x speed). Upload the whole folder (drag it onto the GitHub upload page). |
 | `.claude/launch.json` | Local test server for the PC |
 
 ## Test on the PC
@@ -51,7 +51,7 @@ On the iPhone:
 - Put the phone in a padded case and strap it firmly to the **bottom** of the bag, away from feet. Mount it the same way every time.
 - **Mounted sideways (landscape)?** Either side up works, but the screen **must rotate**: turn off **Rotation Lock** (swipe down from the top-right corner). If the phone is on its side and the screen didn't turn, a red warning shows at the top after **Start**, because the arrow would point up/down instead of left/right. In landscape the arrow and the word LEFT/RIGHT sit side by side.
 - Coming from v1.2.0 or earlier, the home-screen app may still be locked to portrait. If it won't turn sideways with Rotation Lock off, remove it from the home screen and add it again from Safari.
-- Turn the volume up. The beep plays even with the silent switch on (iOS 17+).
+- Turn the phone volume up (the app always plays at full volume; the phone buttons set the loudness). The beep plays even with the silent switch on (iOS 17+).
 - **Set Kick sensitivity** (Settings → **Kick sensitivity**, default **0.6 g**; lower = lighter kicks count):
   1. Tap **Clear peak**, then have your **lightest kicker** (e.g. an 8-year-old) kick the bag.
   2. Tap **Set to 70% of peak**. The slider moves to 70% of that kick's peak, so kicks that light or harder all count.
@@ -78,8 +78,8 @@ On the iPhone:
 
 ## Voice cue (v1.5.0)
 - Settings -> Sound and screen -> **Voice**: when on, the phone says **"Right!"** or **"Left!"** instead of the beep, at the same moment the arrow appears. Off = the beep, as before.
-- **Voice**: Male (David) or Female (Zira). **Speed**: 1x, 1.25x, 1.5x (default), 1.75x. Faster speeds are re-spoken faster, not sped-up recordings, so the pitch stays normal.
-- **Test voice** plays "Right" then "Left" so you can hear it before a drill.
+- The voice is fixed (v1.5.1): the male Windows voice "David" at 1.25x speed, chosen after testing with students. Speed was set by speaking faster, not by speeding up the recording, so the pitch stays normal.
+- Sound and screen now only has two checkboxes: **Voice** and **Flash screen on beep**. Volume and latency offset were removed (volume is always full, latency 0).
 - Timing starts when the word starts (the clips have no silence in front), the same for every student. Times with the voice aren't directly comparable to times with the beep, so use one or the other when comparing.
 - The clips were made with the built-in Windows voices (System.Speech), trimmed and made loud. If the voice folder is missing, the app falls back to the beep.
 
@@ -96,7 +96,8 @@ The main screen only has what students need: the timer display, Start / Reset, S
 
 ## Accuracy notes
 - Safari reports motion about 60 times a second, so times are accurate to about ±17 ms. That's fine for kick reactions (about 200–600 ms).
-- **Latency offset** (Settings) shifts every time by a fixed number of ms if you want to correct for speaker delay. It applies equally to everyone, so comparisons stay fair.
+- Speaker delay is the same on every kick, so it applies equally to everyone and comparisons stay fair. (The Latency offset setting was removed in v1.5.1.)
+- Word results (NO KICK, FALSE START) use smaller text, and with the phone on its side the display shrinks to fit, so Start/Stop always stays on screen (v1.5.1).
 
 ## Future ideas
 - Kick power on the main screen: big peak g for each kick plus the session best ("hardest kick" game). Same bag only for comparing.
