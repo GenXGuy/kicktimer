@@ -74,13 +74,14 @@ On the iPhone:
   - After each kick: **✓ Right side** with a chirp, or **Wrong side!** in red with a buzz. A kick it can't call clearly shows "side unclear" and doesn't count either way.
   - Settings → **Turn off side check** clears the calibration.
   - Copy log adds `hit_side`, `side_score` (+1 = clearly right, −1 = clearly left), `push_x`, `push_y` and `screen_angle`, for tuning.
-- **Peak g and direction (°)**: shown for each hit. **Copy log** (Settings → Logs) copies all reps as CSV. Side check uses the bag's push over the first 80 ms after impact (`push_x`, `push_y`), which is steadier than the single strongest reading (the °).
+- **Peak g and direction (°)**: shown for each hit. **Copy log** (Settings → Logs) copies all reps as CSV. Side check uses the **first jolt** of the kick (v1.6.0). Before v1.6.0 it summed the push over 80 ms, but on hard kicks the bag bounces back within ~50 ms and the sum came out backwards: on the 2026-10-14 class logs (182 kicks) the 80 ms sum matched the arrow 50% of the time, the first jolt 88% (some of the rest were students really kicking the wrong side). The saved logs keep both: `push` (first jolt), `push80` (old sum) and `joltMs`.
 
 ## Voice cue (v1.5.0)
 - Settings -> Sound and screen -> **Voice**: when on, the phone says **"Right!"** or **"Left!"** instead of the beep, at the same moment the arrow appears. Off = the beep, as before.
 - The voice is fixed (v1.5.1): the male Windows voice "David" at 1.25x speed, chosen after testing with students. Speed was set by speaking faster, not by speeding up the recording, so the pitch stays normal.
 - Sound and screen now only has two checkboxes: **Voice** and **Flash screen on beep**. Volume and latency offset were removed (volume is always full, latency 0).
 - Timing starts when the word starts (the clips have no silence in front), the same for every student. Times with the voice aren't directly comparable to times with the beep, so use one or the other when comparing.
+- **Offline check** (v1.5.2): under the Voice checkbox, Settings shows **"✓ Voice saved for offline use"** or a red warning. If the clips are missing and the phone is online, the app downloads them by itself; anything the app fetches online is kept for offline use. Check for the green line before going to a gym with no signal.
 - The clips were made with the built-in Windows voices (System.Speech), trimmed and made loud. If the voice folder is missing, the app falls back to the beep.
 
 ## Main screen and Settings (v1.4.1)
@@ -93,6 +94,8 @@ The main screen only has what students need: the timer display, Start / Reset, S
 - Logs survive closing the app. About 3 MB is kept (thousands of kicks); the oldest sessions are dropped first.
 - Settings → **Delete saved logs** clears them (download first if you want to keep them).
 - **Copy log** still copies this session's summary as CSV.
+- **Sound diagnostics** (v1.5.3): the logs also record app opens (online/offline, home-screen, offline-ready), each Start tap's sound state before/after (running / suspended / interrupted, recreated or not), each voice clip load (ok, or which step failed and the error), what each rep played (voice or beep) with the sound state at that moment, and any app errors. A session is saved even with no kicks, so a failed attempt still shows up.
+- **sound badge** (top right, next to sensor): "sound: on" (green) or "sound: off · tap Start" (red). If the sound system was stuck (e.g. after a call or Siri), tapping Start rebuilds it.
 
 ## Accuracy notes
 - Safari reports motion about 60 times a second, so times are accurate to about ±17 ms. That's fine for kick reactions (about 200–600 ms).

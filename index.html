@@ -18,7 +18,10 @@
   <main class="app">
     <header class="topbar">
       <h1>KickTimer</h1>
-      <span id="sensorBadge" class="badge">sensor: —</span>
+      <span class="badges">
+        <span id="soundBadge" class="badge">sound: —</span>
+        <span id="sensorBadge" class="badge">sensor: —</span>
+      </span>
     </header>
 
     <div id="rotateWarn" class="warn" hidden>The phone is on its side but the screen didn't turn. Swipe down from the top-right corner and turn off <b>Rotation Lock</b>, or the arrow will point the wrong way.</div>
@@ -117,6 +120,7 @@
 
       <h3>Sound and screen</h3>
       <label class="check"><input id="voice" type="checkbox"> Voice: say "Right" / "Left" instead of the beep</label>
+      <p id="voiceStatus" class="hint voice-status"></p>
       <label class="check"><input id="flash" type="checkbox"> Flash screen on beep</label>
       <button id="checkUpdate" class="btn small update-check">Check for update</button>
     </details>

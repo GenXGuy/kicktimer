@@ -1,5 +1,5 @@
 ﻿// Offline cache for KickTimer. Bump CACHE on every release so phones pick up the new files.
-const CACHE = 'kicktimer-v1.5.1';
+const CACHE = 'kicktimer-v1.6.0';
 const FILES = [
   './',
   'index.html',
@@ -33,9 +33,17 @@ self.addEventListener('activate', (e) => {
 });
 
 // Cache first: works with no signal at all. Updates arrive when sw.js changes.
+// Anything of ours fetched from the network (e.g. a voice clip the install missed)
+// is saved too, so it works offline from then on.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request))
+    caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request).then((res) => {
+      if (res.ok && new URL(e.request.url).origin === self.location.origin) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+      }
+      return res;
+    }))
   );
 });

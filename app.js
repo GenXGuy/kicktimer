@@ -3,7 +3,7 @@
 // KickTimer: countdown -> random delay -> beep -> time until the bag is hit.
 // Runs entirely on the phone; see README.md for setup.
 
-const VERSION = '1.5.1';
+const VERSION = '1.6.0';
 const G = 9.80665;           // m/s^2 per g
 const SETTLE_MS = 600;       // bag must stay below threshold this long before a rep
 const CAPTURE_MS = 120;      // after the first crossing, keep reading to find the peak
@@ -11,7 +11,12 @@ const SERIES_GAP_MS = 1500;  // at series end, show the last rep before the fast
 const MAX_LIST = 50;
 const VOLUME = 1;            // full; the phone's volume buttons set the loudness
 const MAX_SAME_SIDE = 3;      // Random side: never more than this many in a row
-const IMPULSE_MS = 80;       // side check: add up the bag's push over this long after impact
+const IMPULSE_MS = 80;       // logged for comparison only: the bag's push summed over this long
+// Side check uses the FIRST jolt of the kick. On hard kicks the bag bounces back
+// within ~50 ms, so longer sums get it backwards (class logs, 2026-10-14: 80 ms sum
+// matched the arrow 50% of the time, first jolt 88%).
+const JOLT_LEAD_MS = 34;     // look this far before the trigger for an earlier, lighter first jolt
+const JOLT_MIN_G = 0.5;      // ...at least this strong
 const CALIB_KICKS = 3;       // side calibration: kicks per side
 const SIDE_MIN = 0.3;        // side check: a push weaker than this along the left/right line is unclear
 const RAW_PRE_MS = 200;      // detailed log: sensor readings kept from before each kick...
@@ -139,13 +144,23 @@ let audio = null;
 
 function startAudio() {
   // Called synchronously from the Start tap so iOS allows sound.
+  const info = { before: audio ? audio.state : 'none' };
   try {
     if ('audioSession' in navigator) navigator.audioSession.type = 'playback'; // play with silent switch on
-  } catch (e) { /* older iOS */ }
+    info.audioSession = 'audioSession' in navigator ? navigator.audioSession.type : 'not supported';
+  } catch (e) { info.audioSession = 'error: ' + e.message; }
+  // iOS can leave the context stuck "interrupted" (a call, Siri, another app's audio)
+  // or closed. A tap is allowed to make a new one, so start fresh.
+  if (audio && (audio.state === 'interrupted' || audio.state === 'closed')) {
+    if (audio.state !== 'closed') audio.close().catch(() => {});
+    audio = null;
+    info.recreated = true;
+  }
   if (!audio) {
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return Promise.resolve();
+    if (!AC) { logEvent('audio', { ...info, error: 'no Web Audio' }); return Promise.resolve(); }
     audio = new AC();
+    audio.onstatechange = () => logEvent('audioState', { state: audio.state });
     // A silent buffer fully unlocks output on iOS.
     const buf = audio.createBuffer(1, 1, 22050);
     const src = audio.createBufferSource();
@@ -154,7 +169,11 @@ function startAudio() {
     src.start(0);
   }
   loadVoice();
-  return audio.state === 'running' ? Promise.resolve() : audio.resume().catch(() => {});
+  const done = () => {
+    logEvent('audio', { ...info, after: audio.state, sampleRate: audio.sampleRate, baseLatency: audio.baseLatency, outputLatency: audio.outputLatency });
+  };
+  if (audio.state === 'running') { done(); return Promise.resolve(); }
+  return audio.resume().then(done, (e) => { info.resumeError = String(e && e.message || e); done(); });
 }
 
 function tone(freq, durSec, vol, type, at) {
@@ -196,12 +215,46 @@ function loadVoice() {
   ['right', 'left'].forEach((key) => {
     if (voiceBuffers[key]) return;
     voiceBuffers[key] = 'loading';
+    const t0 = performance.now();
+    let step = 'fetch';
     fetch(`voice/${key}.wav`)
-      .then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); step = 'decode'; return r.arrayBuffer(); })
       .then((data) => new Promise((ok, fail) => audio.decodeAudioData(data, ok, fail)))
-      .then((buf) => { voiceBuffers[key] = buf; })
-      .catch(() => { delete voiceBuffers[key]; }); // falls back to the beep
+      .then((buf) => {
+        voiceBuffers[key] = buf;
+        logEvent('voiceLoad', { file: key, ok: true, ms: Math.round(performance.now() - t0), online: navigator.onLine });
+      })
+      .catch((e) => {
+        delete voiceBuffers[key]; // falls back to the beep
+        logEvent('voiceLoad', { file: key, ok: false, step, error: String(e && e.message || e), online: navigator.onLine });
+      });
   });
+}
+
+// Settings shows whether the clips are saved for offline use (the gym has no signal).
+// If they're missing and we're online, fetch them: the service worker keeps a copy.
+const VOICE_FILES = ['voice/right.wav', 'voice/left.wav'];
+
+function checkVoiceOffline(retry = true) {
+  const out = $('voiceStatus');
+  if (!('caches' in window) || !navigator.serviceWorker || !navigator.serviceWorker.controller) {
+    out.textContent = '';
+    return;
+  }
+  Promise.all(VOICE_FILES.map((f) => caches.match(f, { ignoreSearch: true }))).then((hits) => {
+    logEvent('voiceCache', { right: !!hits[0], left: !!hits[1], online: navigator.onLine, retry });
+    if (hits.every(Boolean)) {
+      out.textContent = '✓ Voice saved for offline use';
+      out.className = 'hint voice-status ok';
+      return;
+    }
+    out.textContent = 'Voice not saved for offline use yet. Open the app once on Wi-Fi (the beep is used until then).';
+    out.className = 'hint voice-status bad';
+    if (retry && navigator.onLine) {
+      Promise.all(VOICE_FILES.map((f) => fetch(f).catch(() => null)))
+        .then(() => setTimeout(() => checkVoiceOffline(false), 500));
+    }
+  }).catch(() => { out.textContent = ''; });
 }
 
 function voiceBuffer(side) {
@@ -228,6 +281,12 @@ function scheduleBeep(side) {
   const voice = voiceBuffer(side);
   if (voice) playBuffer(voice, at);
   else tone(1200, 0.2, 0.6 * VOLUME, 'square', at);
+  // for the logs: what played, and whether the sound system was actually on
+  const vb = side && voiceBuffers[side];
+  drill.sound = {
+    played: voice ? 'voice' : 'beep', audioState: audio.state,
+    voiceOn: settings.voice, voiceClip: !settings.voice ? 'off' : vb === 'loading' ? 'loading' : vb ? 'ready' : 'missing',
+  };
 
   let perfAt = null;
   if (audio.getOutputTimestamp) {
@@ -495,8 +554,10 @@ function beginCapture(s) {
   drill.peak = s;
   drill.imp = [s.x, s.y];
   const samples = startRawRecording(s);
+  const jolt = samples.find((p) => p.t >= s.t - JOLT_LEAD_MS && p.t <= s.t && p.g >= JOLT_MIN_G) || s;
+  const push = toScreen(jolt.x, jolt.y);
   later(CAPTURE_MS, () => {
-    const push = toScreen(drill.imp[0], drill.imp[1]);
+    const push80 = toScreen(drill.imp[0], drill.imp[1]);
     if (calib) { calibKick(push, samples, s.t); return; }
     const p = drill.peak;
     const angle = (Math.atan2(p.y, p.x) * 180 / Math.PI + 360) % 360;
@@ -504,7 +565,7 @@ function beginCapture(s) {
     finishRep({
       kind: 'hit', ms: drill.hitT - drill.beepT,
       peakG: p.g, x: p.x, y: p.y, z: p.z, angle, sim: s.sim,
-      hitSide: judged.side, sideScore: judged.score, push, screenAngle: screenAngle(),
+      hitSide: judged.side, sideScore: judged.score, push, push80, joltMs: Math.round(jolt.t - s.t), screenAngle: screenAngle(),
       samples, hitT: s.t,
     });
   });
@@ -521,6 +582,7 @@ function finishRep(r) {
   r.rep = drill.repNo;
   r.side = drill.cueShown ? drill.side : ''; // blank for false starts: no side was shown yet
   // true/false only when the side could be judged; null = not calibrated or unclear
+  r.sound = drill.cueShown ? drill.sound : null;
   r.correct = r.kind === 'hit' && r.side && (r.hitSide === 'left' || r.hitSide === 'right') ? r.hitSide === r.side : null;
   r.mode = drill.series ? 'series' : 'single';
   r.when = new Date();
@@ -836,11 +898,14 @@ function newSession() {
 }
 
 function logEvent(type, data) {
-  session.events.push({ type, when: new Date().toISOString(), threshold: settings.threshold, cueMode: settings.cue, sideAxis: settings.sideAxis, data });
-  // wait for the readings after the kick to finish coming in, then save
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveLogs, RAW_POST_MS + 200);
-  paintLogsLink();
+  if (!session) return;
+  try {
+    session.events.push({ type, when: new Date().toISOString(), threshold: settings.threshold, cueMode: settings.cue, sideAxis: settings.sideAxis, data });
+    // wait for the readings after the kick to finish coming in, then save
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveLogs, RAW_POST_MS + 200);
+    paintLogsLink();
+  } catch (e) { /* logging must never break the drill (or loop through the error handler) */ }
 }
 
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -851,6 +916,7 @@ function packEvent(e) {
   const out = { type: e.type, when: e.when, threshold: e.threshold, cueMode: e.cueMode, sideAxis: e.sideAxis, ...rest };
   if (when instanceof Date) out.repTime = when.toISOString();
   if (out.push) out.push = out.push.map(r2);
+  if (out.push80) out.push80 = out.push80.map(r2);
   ['ms', 'peakG', 'x', 'y', 'z', 'angle', 'sideScore'].forEach((k) => { if (typeof out[k] === 'number') out[k] = r2(out[k]); });
   if (samples) out.samples = samples.map((p) => [Math.round(p.t - hitT), r2(p.x), r2(p.y), r2(p.z), r2(p.ra || 0), r2(p.rb || 0), r2(p.rg || 0)]);
   return out;
@@ -923,6 +989,14 @@ function deleteLogs() {
 
 // ---------- live meter + sensor badge ----------
 
+function paintSoundBadge() {
+  const b = $('soundBadge');
+  if (!audio) { b.textContent = 'sound: tap Start'; b.className = 'badge'; return; }
+  if (audio.state === 'running') { b.textContent = 'sound: on'; b.className = 'badge ok'; return; }
+  b.textContent = 'sound: off · tap Start';
+  b.className = 'badge bad';
+}
+
 // True when gravity says the phone is on its side (landscape) but the page is
 // still laid out portrait, e.g. Rotation Lock is on. Uses only which axis gravity
 // is along, not its sign, so it works the same on every iOS version.
@@ -960,6 +1034,7 @@ function frame(now) {
       el.badge.className = 'badge';
     }
     el.sim.hidden = live || !motion.listening;
+    paintSoundBadge();
     el.rotateWarn.hidden = !(live && screenNotRotated());
   }
   requestAnimationFrame(frame);
@@ -979,6 +1054,7 @@ $('fromPeak').addEventListener('click', () => {
 });
 el.copyLog.addEventListener('click', copyLog);
 $('calibBtn').addEventListener('click', onCalibTap);
+checkVoiceOffline();
 $('clearCalib').addEventListener('click', () => { settings.sideAxis = null; saveSettings(); paintSideStatus(); });
 // Tap the full-screen arrow to stop (it covers the Stop button)
 el.cue.addEventListener('click', () => { if (running()) stopDrill(drill.calib ? 'Calibration cancelled' : 'Stopped'); });
@@ -994,11 +1070,21 @@ document.addEventListener('visibilitychange', () => {
   } else {
     keepAwake();
     checkForUpdate(); // iOS often resumes the app instead of restarting it
+    checkVoiceOffline();
   }
 });
 
 $('version').textContent = VERSION;
 newSession();
+logEvent('app', {
+  online: navigator.onLine,
+  homeScreen: !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)),
+  offlineReady: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+  audioSession: 'audioSession' in navigator,
+});
+// App errors go into the logs too, so problems at the gym can be traced later
+window.addEventListener('error', (e) => logEvent('error', { message: e.message, where: `${(e.filename || '').split('/').pop()}:${e.lineno}` }));
+window.addEventListener('unhandledrejection', (e) => logEvent('error', { message: String(e.reason && e.reason.message || e.reason) }));
 paintLogsLink();
 $('downloadLogs').addEventListener('click', downloadLogs);
 $('deleteLogs').addEventListener('click', deleteLogs);
@@ -1038,6 +1124,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (hadController) applyUpdate();
     hadController = true; // any later change in this session is a real update
+    checkVoiceOffline();
   });
   navigator.serviceWorker.register('sw.js').then((reg) => { swReg = reg; reg.update().catch(() => {}); }).catch(() => {});
 }
