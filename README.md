@@ -96,6 +96,7 @@ The main screen only has what students need: the timer display, Start / Reset, S
 - **Copy log** still copies this session's summary as CSV.
 - **Sound diagnostics** (v1.5.3): the logs also record app opens (online/offline, home-screen, offline-ready), each Start tap's sound state before/after (running / suspended / interrupted, recreated or not), each voice clip load (ok, or which step failed and the error), what each rep played (voice or beep) with the sound state at that moment, and any app errors. A session is saved even with no kicks, so a failed attempt still shows up.
 - **sound badge** (top right, next to sensor): "sound: on" (green) or "sound: off · tap Start" (red). If the sound system was stuck (e.g. after a call or Siri), tapping Start rebuilds it.
+- **Scrolling switched the sound off** (found 2026-10-21): on the iPhone, scrolling the page can turn the app's sound off, and kids' fingers on Start often turned into a scroll. Since v1.6.1 the page **can't scroll while a drill runs** (it jumps to the top on Start; scrolling works again when stopped), the app switches the sound straight back on if iPhone turns it off mid-drill, and **any tap on the screen** wakes the sound up. A rep whose cue played with the sound off shows **"⚠ no sound, tap the screen"**.
 
 ## Accuracy notes
 - Safari reports motion about 60 times a second, so times are accurate to about ±17 ms. That's fine for kick reactions (about 200–600 ms).

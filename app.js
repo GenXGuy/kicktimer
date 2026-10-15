@@ -3,7 +3,7 @@
 // KickTimer: countdown -> random delay -> beep -> time until the bag is hit.
 // Runs entirely on the phone; see README.md for setup.
 
-const VERSION = '1.6.0';
+const VERSION = '1.6.1';
 const G = 9.80665;           // m/s^2 per g
 const SETTLE_MS = 600;       // bag must stay below threshold this long before a rep
 const CAPTURE_MS = 120;      // after the first crossing, keep reading to find the peak
@@ -160,7 +160,7 @@ function startAudio() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) { logEvent('audio', { ...info, error: 'no Web Audio' }); return Promise.resolve(); }
     audio = new AC();
-    audio.onstatechange = () => logEvent('audioState', { state: audio.state });
+    audio.onstatechange = onAudioState;
     // A silent buffer fully unlocks output on iOS.
     const buf = audio.createBuffer(1, 1, 22050);
     const src = audio.createBufferSource();
@@ -174,6 +174,24 @@ function startAudio() {
   };
   if (audio.state === 'running') { done(); return Promise.resolve(); }
   return audio.resume().then(done, (e) => { info.resumeError = String(e && e.message || e); done(); });
+}
+
+// iPhone can switch the sound off mid-drill, e.g. when a finger on Start turns into
+// a scroll. Try to switch it straight back on; any tap on the screen also does it.
+function onAudioState() {
+  logEvent('audioState', { state: audio.state, drillRunning: running() });
+  if (audio.state !== 'running' && audio.state !== 'closed' && running()) {
+    audio.resume().then(
+      () => logEvent('audioResume', { ok: audio.state === 'running', state: audio.state, by: 'auto' }),
+      (e) => logEvent('audioResume', { ok: false, error: String(e && e.message || e), by: 'auto' }));
+  }
+}
+
+function wakeAudioOnTap() {
+  if (!audio || audio.state === 'running') return;
+  const before = audio.state;
+  startAudio(); // inside a tap, so iOS allows it (and it rebuilds a stuck context)
+  logEvent('audioResume', { before, by: 'tap' });
 }
 
 function tone(freq, durSec, vol, type, at) {
@@ -455,6 +473,7 @@ const running = () => drill.state !== 'idle';
 function updateStartButton() {
   el.start.textContent = running() ? 'Stop' : 'Start';
   el.start.classList.toggle('stop', running());
+  document.body.classList.toggle('running', running());
 }
 
 function onStartTap() {
@@ -462,6 +481,7 @@ function onStartTap() {
   // Kick off permission + audio inside the tap, then continue.
   const ready = Promise.all([startMotion(), startAudio()]);
   keepAwake();
+  window.scrollTo(0, 0); // the timer display and Stop button in view
   ready.then(() => {
     cancelTimers();
     drill.series = settings.mode === 'series' ? { total: settings.reps, list: [] } : null;
@@ -596,7 +616,8 @@ function finishRep(r) {
       resultSound(false);
     } else {
       const sideTxt = r.correct ? `✓ ${sideName(r.side)} side` : r.hitSide === '?' ? `${sideName(r.side)} · side unclear` : sideName(r.side);
-      show('good', 'Reaction time', fmt(r.ms), `${sideTxt} · ${extra}`);
+      const noSound = r.sound && r.sound.audioState !== 'running' ? ' · <b class="nosound">⚠ no sound, tap the screen</b>' : '';
+      show('good', 'Reaction time', fmt(r.ms), `${sideTxt} · ${extra}${noSound}`);
       if (r.correct) resultSound(true);
     }
   } else if (r.kind === 'false') {
@@ -1053,6 +1074,10 @@ $('fromPeak').addEventListener('click', () => {
   input.dispatchEvent(new Event('input')); // same path as moving the slider: saves + repaints
 });
 el.copyLog.addEventListener('click', copyLog);
+// Page locked while a drill runs (a scroll can switch the sound off), and any tap wakes the sound up
+document.addEventListener('touchmove', (e) => { if (running()) e.preventDefault(); }, { passive: false });
+document.addEventListener('touchend', wakeAudioOnTap, true);
+document.addEventListener('click', wakeAudioOnTap, true);
 $('calibBtn').addEventListener('click', onCalibTap);
 checkVoiceOffline();
 $('clearCalib').addEventListener('click', () => { settings.sideAxis = null; saveSettings(); paintSideStatus(); });
